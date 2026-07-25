@@ -32,7 +32,12 @@
               <th class="py-2 pr-4">Root</th>
               <th class="py-2 pr-4">Tout</th>
               @for (key of permissionKeys; track key) {
-                <th class="py-2 pr-2 leading-tight">{{ permissionLabels[key] }}</th>
+                <th class="py-2 pr-2 leading-tight">
+                  <div class="flex items-center gap-1">
+                    <input type="checkbox" [checked]="columnChecked(key)" (change)="toggleColumn(key, $event)" />
+                    <span>{{ permissionLabels[key] }}</span>
+                  </div>
+                </th>
               }
               <th class="py-2"></th>
             </tr>

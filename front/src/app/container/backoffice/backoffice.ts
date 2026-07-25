@@ -88,4 +88,20 @@ export class BackofficePage implements OnInit {
       user.permissions[key] = checked;
     }
   }
+
+  // Whether every editable (non-root) user currently has this permission
+  // checked, for the column header checkbox to reflect. Root users are
+  // excluded since their checkboxes are disabled and meaningless here.
+  columnChecked(key: keyof AdminUser['permissions']): boolean {
+    const editable = this.users().filter((u) => !u.root);
+    return editable.length > 0 && editable.every((u) => u.permissions[key]);
+  }
+
+  toggleColumn(key: keyof AdminUser['permissions'], event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    for (const user of this.users()) {
+      if (user.root) continue;
+      user.permissions[key] = checked;
+    }
+  }
 }
