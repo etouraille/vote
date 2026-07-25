@@ -2,8 +2,9 @@ import { DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { SearchResult } from '../../model/text.model';
+import { AuthService } from '../../service/auth';
 import { TextService } from '../../service/text';
 import { firstWords } from '../../util/words';
 
@@ -22,7 +23,7 @@ export interface RecentTextCard {
   templateUrl: './home.html',
 })
 export class HomePage implements OnInit {
-  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
   private readonly textService = inject(TextService);
 
   searchQuery = '';
@@ -33,7 +34,18 @@ export class HomePage implements OnInit {
 
   readonly recentTexts = signal<RecentTextCard[]>([]);
 
+  // Gate the Éditer/Voter links shown on each search result — same rights
+  // that gate the actions themselves once you're on those pages (editor.ts's
+  // canAmendText, vote.ts's canVote), so a result never links to a page
+  // where the user couldn't do anything anyway.
+  readonly canAmendText = signal(false);
+  readonly canVote = signal(false);
+
   ngOnInit(): void {
+    this.auth.me().subscribe((me) => {
+      this.canAmendText.set(me.root || me.permissions.canSelect || me.permissions.canEditSelection);
+      this.canVote.set(me.root || me.permissions.canVote);
+    });
     this.loadRecentTexts();
   }
 
@@ -65,9 +77,5 @@ export class HomePage implements OnInit {
         this.searchError.set(err.error?.error ?? 'Erreur lors de la recherche');
       },
     });
-  }
-
-  openResult(result: SearchResult): void {
-    this.router.navigate(['/editor'], { queryParams: { id: result.textId } });
   }
 }
