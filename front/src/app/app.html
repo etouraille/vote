@@ -1,9 +1,24 @@
 @if (auth.isAuthenticated() && auth.user(); as user) {
-  <div class="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
-    @if (avatarUrl(); as url) {
-      <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-slate-200" />
-    }
-    <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
+  <div class="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
+    <div class="flex items-center gap-2">
+      @if (avatarUrl(); as url) {
+        <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-slate-200" />
+      }
+      <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
+    </div>
+    <div class="flex items-center gap-2">
+      @if (user.root) {
+        <a
+          routerLink="/backoffice"
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+        >
+          Backoffice
+        </a>
+      }
+      <button (click)="logout()" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700">
+        Se déconnecter
+      </button>
+    </div>
   </div>
 }
 <router-outlet />

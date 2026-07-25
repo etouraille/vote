@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/etouraille/queel"
 	"github.com/etouraille/queel/rbac"
 )
 
@@ -129,10 +130,15 @@ func assignPermissionsHandler(store *Store, rbacStore *rbac.Store) http.HandlerF
 	}
 }
 
-// deleteUserHandler removes an api account entirely, along with its rbac
-// directory entry if it had one — an orphaned rbac.User left behind would
-// just be dead weight, never reachable by any api account again.
-func deleteUserHandler(store *Store, rbacStore *rbac.Store) http.HandlerFunc {
+// deleteUserHandler removes an api account entirely: its rbac directory
+// entry if it had one (an orphaned rbac.User left behind would just be dead
+// weight, never reachable by any api account again), every fragment it ever
+// authored in queel — its content contribution — along with whatever
+// depended on that fragment (see queel.Repository.DeleteUserFragments),
+// every vote it ever cast (see DeleteUserVotes — otherwise those votes
+// would keep counting toward WinningFragment forever, under an ID nothing
+// maps to any more), and finally the account row itself.
+func deleteUserHandler(store *Store, rbacStore *rbac.Store, textRepo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsFromContext(r)
 		if !ok || !claims.Root {
@@ -161,6 +167,21 @@ func deleteUserHandler(store *Store, rbacStore *rbac.Store) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, "erreur serveur")
 				return
 			}
+		}
+
+		if err := textRepo.DeleteUserTexts(id); err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		if err := textRepo.DeleteUserFragments(id); err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		if err := textRepo.DeleteUserVotes(id); err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
 		}
 
 		if err := store.DeleteUser(r.Context(), id); err != nil {

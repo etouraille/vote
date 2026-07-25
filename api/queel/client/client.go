@@ -100,10 +100,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// CreateText creates a new text from its initial content.
-func (c *Client) CreateText(ctx context.Context, title, content string) (*queel.Text, error) {
+// CreateText creates a new text from its initial content, attributed to
+// authorID (see queel.Text.CreatedBy).
+func (c *Client) CreateText(ctx context.Context, title, content, authorID string) (*queel.Text, error) {
 	var text queel.Text
-	body := map[string]string{"title": title, "content": content}
+	body := map[string]string{"title": title, "content": content, "authorId": authorID}
 	if err := c.do(ctx, http.MethodPost, "/texts", body, &text); err != nil {
 		return nil, err
 	}

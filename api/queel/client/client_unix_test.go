@@ -39,7 +39,7 @@ func TestClientOverUnixSocket(t *testing.T) {
 	ctx := context.Background()
 	c := newUnixSocketTestClient(t)
 
-	text, err := c.CreateText(ctx, "Constitution", "Nous le peuple.")
+	text, err := c.CreateText(ctx, "Constitution", "Nous le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ export interface User {
   email: string;
   displayName: string;
   pseudo?: string;
+  root: boolean;
 }
 
 export interface AuthTokens {
@@ -26,6 +27,7 @@ export interface AuthResponse {
   userId: string;
   email: string;
   pseudo?: string;
+  root: boolean;
 }
 
 export interface RegisterAck {

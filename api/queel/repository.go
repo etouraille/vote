@@ -108,15 +108,15 @@ func userChoiceKey(textID, slotID, userID string) []byte {
 	return []byte(fmt.Sprintf("uservote/%s/%s/%s", textID, slotID, userID))
 }
 
-// CreateText creates a new text from its initial content. It starts with no
-// slots and no open round; slots only come into existence once someone
-// calls ProposeEdit.
-func (r *Repository) CreateText(title, content string) (*Text, error) {
+// CreateText creates a new text from its initial content, attributed to
+// authorID (see Text.CreatedBy). It starts with no slots and no open round;
+// slots only come into existence once someone calls ProposeEdit.
+func (r *Repository) CreateText(title, content, authorID string) (*Text, error) {
 	id, err := newID()
 	if err != nil {
 		return nil, err
 	}
-	text := &Text{ID: id, Title: title, Content: content, CreatedAt: time.Now()}
+	text := &Text{ID: id, Title: title, Content: content, CreatedAt: time.Now(), CreatedBy: authorID}
 
 	payload, err := json.Marshal(text)
 	if err != nil {
@@ -471,6 +471,210 @@ func (r *Repository) VoteCount(fragmentID string) (int, error) {
 	return len(kvs), nil
 }
 
+// DeleteUserVotes removes every trace of userID casting a vote: their vote
+// records (vote/<fragmentID>/<userID>, whichever fragments they're under —
+// there's no index by user, so this is a full scan of both prefixes) and
+// their per-slot current-choice pointers (uservote/<textID>/<slotID>/
+// <userID>). Called when an account is deleted, so its votes stop counting
+// toward WinningFragment instead of persisting under an ID nothing maps to
+// any more.
+//
+// Fragments userID authored (Fragment.AuthorID) are deliberately left in
+// place: that's the content itself, still competing in whatever round it
+// was proposed for, and removing it out from under an in-progress vote
+// would be a much more disruptive change than the account merely ceasing
+// to exist.
+func (r *Repository) DeleteUserVotes(userID string) error {
+	suffix := "/" + userID
+
+	votes, err := r.store.Scan([]byte("vote/"))
+	if err != nil {
+		return err
+	}
+	choices, err := r.store.Scan([]byte("uservote/"))
+	if err != nil {
+		return err
+	}
+
+	var ops []WriteOp
+	for _, kv := range votes {
+		if strings.HasSuffix(string(kv.Key), suffix) {
+			ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
+		}
+	}
+	for _, kv := range choices {
+		if strings.HasSuffix(string(kv.Key), suffix) {
+			ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
+		}
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	return r.store.WriteBatch(ops)
+}
+
+// DeleteUserFragments removes every fragment userID ever authored — their
+// content contribution, as opposed to DeleteUserVotes' votes — along with
+// whatever depended on it: its entry in the text+slot index (so
+// Fragments/WinningFragment stop seeing it), every vote anyone cast for it
+// (now pointing at nothing), and those voters' current-choice pointer for
+// that slot, but only if it's still aimed at the fragment being removed —
+// they may have already moved their vote elsewhere.
+//
+// The automatic seed fragment (Fragment.AuthorID == SeedAuthorID) is never
+// userID, so it's never touched: a slot always keeps at least its seed,
+// same invariant CloseRound/WinningFragment already rely on.
+func (r *Repository) DeleteUserFragments(userID string) error {
+	kvs, err := r.store.Scan([]byte("fragment/"))
+	if err != nil {
+		return err
+	}
+
+	var ops []WriteOp
+	for _, kv := range kvs {
+		var fragment Fragment
+		if err := json.Unmarshal(kv.Value, &fragment); err != nil {
+			return err
+		}
+		if fragment.AuthorID != userID {
+			continue
+		}
+
+		ops = append(ops,
+			WriteOp{Key: fragmentKey(fragment.ID), Tombstone: true},
+			WriteOp{Key: fragmentIndexKey(fragment.TextID, fragment.SlotID, fragment.ID), Tombstone: true},
+		)
+
+		votes, err := r.store.Scan(votePrefix(fragment.ID))
+		if err != nil {
+			return err
+		}
+		for _, voteKV := range votes {
+			ops = append(ops, WriteOp{Key: voteKV.Key, Tombstone: true})
+
+			var vote Vote
+			if err := json.Unmarshal(voteKV.Value, &vote); err != nil {
+				return err
+			}
+			choiceKey := userChoiceKey(fragment.TextID, fragment.SlotID, vote.UserID)
+			current, found, err := r.store.Get(choiceKey)
+			if err != nil {
+				return err
+			}
+			if found && string(current) == fragment.ID {
+				ops = append(ops, WriteOp{Key: choiceKey, Tombstone: true})
+			}
+		}
+	}
+
+	if len(ops) == 0 {
+		return nil
+	}
+	return r.store.WriteBatch(ops)
+}
+
+// DeleteUserTexts removes every text userID created (Text.CreatedBy) —
+// including every text forked from one of theirs via CloseRound, since
+// CreatedBy carries forward across a fork rather than switching to whoever
+// closed the round, so a single scan-and-filter by CreatedBy already covers
+// a version chain's entire history. For each matching text, this is a full
+// teardown: the text itself, every round ever opened on it (open or
+// closed), every slot (embedded in its round, so no separate cleanup),
+// every fragment proposed for any of those slots — including ones authored
+// by other users, since the text those fragments belong to is gone — every
+// vote cast on those fragments, and every voter's current-choice pointer
+// for those slots.
+//
+// This is a much bigger blast radius than DeleteUserFragments/
+// DeleteUserVotes: it removes other people's contributions too, wherever
+// they live on a text this user created. That's inherent to actually
+// deleting the text rather than just unlinking this user from it.
+func (r *Repository) DeleteUserTexts(userID string) error {
+	textKVs, err := r.store.Scan(textPrefix())
+	if err != nil {
+		return err
+	}
+
+	var targetIDs []string
+	var ops []WriteOp
+	for _, kv := range textKVs {
+		var text Text
+		if err := json.Unmarshal(kv.Value, &text); err != nil {
+			return err
+		}
+		if text.CreatedBy != userID {
+			continue
+		}
+		targetIDs = append(targetIDs, text.ID)
+		ops = append(ops,
+			WriteOp{Key: textKey(text.ID), Tombstone: true},
+			WriteOp{Key: currentRoundKey(text.ID), Tombstone: true},
+			WriteOp{Key: roundCountKey(text.ID), Tombstone: true},
+		)
+	}
+	if len(targetIDs) == 0 {
+		return nil
+	}
+
+	targets := make(map[string]bool, len(targetIDs))
+	for _, id := range targetIDs {
+		targets[id] = true
+	}
+
+	// Rounds aren't indexed by text, so this is a full scan filtered
+	// in-memory — same trade-off RecentTexts and the other Delete* methods
+	// already make at this codebase's scale.
+	roundKVs, err := r.store.Scan([]byte("round/"))
+	if err != nil {
+		return err
+	}
+	for _, kv := range roundKVs {
+		var round Round
+		if err := json.Unmarshal(kv.Value, &round); err != nil {
+			return err
+		}
+		if targets[round.TextID] {
+			ops = append(ops, WriteOp{Key: roundKey(round.ID), Tombstone: true})
+		}
+	}
+
+	for _, textID := range targetIDs {
+		// The fragment→slot index is prefixed by textID, and its values are
+		// exactly the fragment IDs it points at — scanning it both finds
+		// every fragment ever proposed for this text and lets us delete the
+		// index entries themselves in the same pass.
+		indexKVs, err := r.store.Scan([]byte("fragmentindex/" + textID + "/"))
+		if err != nil {
+			return err
+		}
+		for _, kv := range indexKVs {
+			fragmentID := string(kv.Value)
+			ops = append(ops,
+				WriteOp{Key: kv.Key, Tombstone: true},
+				WriteOp{Key: fragmentKey(fragmentID), Tombstone: true},
+			)
+
+			voteKVs, err := r.store.Scan(votePrefix(fragmentID))
+			if err != nil {
+				return err
+			}
+			for _, voteKV := range voteKVs {
+				ops = append(ops, WriteOp{Key: voteKV.Key, Tombstone: true})
+			}
+		}
+
+		uservoteKVs, err := r.store.Scan([]byte("uservote/" + textID + "/"))
+		if err != nil {
+			return err
+		}
+		for _, kv := range uservoteKVs {
+			ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
+		}
+	}
+
+	return r.store.WriteBatch(ops)
+}
+
 type scoredFragment struct {
 	fragment *Fragment
 	votes    int
@@ -589,6 +793,7 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 		Finalized:      true,
 		CreatedAt:      time.Now(),
 		PreviousTextID: text.ID,
+		CreatedBy:      text.CreatedBy,
 	}
 	newTextPayload, err := json.Marshal(newText)
 	if err != nil {

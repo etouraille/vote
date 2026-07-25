@@ -1,16 +1,4 @@
 <div class="min-h-screen bg-white">
-  <header class="flex items-center justify-end gap-2 px-4 py-3">
-    <a
-      routerLink="/backoffice"
-      class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-    >
-      Backoffice
-    </a>
-    <button (click)="logout()" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700">
-      Se déconnecter
-    </button>
-  </header>
-
   <section class="mx-auto max-w-sm px-4 pt-6">
     <form (ngSubmit)="search()" class="flex items-center gap-2">
       <label class="sr-only" for="search-query">Rechercher</label>

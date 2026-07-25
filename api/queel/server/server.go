@@ -107,8 +107,9 @@ func writeRepositoryError(w http.ResponseWriter, err error) {
 }
 
 type createTextRequest struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	AuthorID string `json:"authorId"`
 }
 
 func createTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
@@ -122,7 +123,7 @@ func createTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFun
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		text, err := repo.CreateText(req.Title, req.Content)
+		text, err := repo.CreateText(req.Title, req.Content, req.AuthorID)
 		if err != nil {
 			writeRepositoryError(w, err)
 			return

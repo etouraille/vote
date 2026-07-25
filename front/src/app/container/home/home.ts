@@ -82,11 +82,6 @@ export class HomePage implements OnInit {
     this.router.navigate(['/editor'], { queryParams: { id: result.textId } });
   }
 
-  logout(): void {
-    this.auth.logout();
-    this.router.navigateByUrl('/');
-  }
-
   createText(): void {
     const title = this.title.trim();
     if (!title) return;

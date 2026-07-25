@@ -33,7 +33,7 @@ func TestRepositoryOverDistributedStore(t *testing.T) {
 	repo := queel.NewRepository(store)
 
 	content := "Nous le peuple francais declare la republique."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}

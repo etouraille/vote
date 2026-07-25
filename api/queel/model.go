@@ -45,6 +45,12 @@ type Text struct {
 	// round closed, or "" if this is an original Text created via
 	// CreateText — the root of its version chain.
 	PreviousTextID string `json:"previousTextId,omitempty"`
+
+	// CreatedBy is whoever originally called CreateText for this version
+	// chain — carried forward unchanged to every text CloseRound forks from
+	// it, regardless of who closed that round. Deleting this user cascades
+	// to every text in the chain (see Repository.DeleteUserTexts).
+	CreatedBy string `json:"createdBy"`
 }
 
 // RoundStatus is the lifecycle state of a Round.

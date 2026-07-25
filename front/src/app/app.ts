@@ -1,11 +1,11 @@
 import { Component, effect, inject, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './service/auth';
 import { gravatarUrl } from './util/gravatar';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -13,6 +13,7 @@ export class App {
   protected readonly title = signal('front');
 
   protected readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   protected readonly avatarUrl = signal<string | null>(null);
 
   constructor() {
@@ -27,5 +28,10 @@ export class App {
       }
       gravatarUrl(email).then((url) => this.avatarUrl.set(url));
     });
+  }
+
+  logout(): void {
+    this.auth.logout();
+    this.router.navigateByUrl('/');
   }
 }

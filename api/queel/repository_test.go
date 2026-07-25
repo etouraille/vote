@@ -34,7 +34,7 @@ func TestRecentTextsMostRecentFirstAndLimited(t *testing.T) {
 
 	var ids []string
 	for i := 0; i < 6; i++ {
-		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content")
+		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestRecentTextsMostRecentFirstAndLimited(t *testing.T) {
 func TestCreateTextHasNoSlotsOrOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 
-	text, err := repo.CreateText("Constitution", "Nous, le peuple.")
+	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestCreateTextHasNoSlotsOrOpenRound(t *testing.T) {
 
 func TestUpdateTextOverwritesTitleAndContent(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Brouillon", "Nous, le peuple.")
+	text, err := repo.CreateText("Brouillon", "Nous, le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestUpdateTextUnknownText(t *testing.T) {
 func TestUpdateTextIgnoresVotingState(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestUpdateTextIgnoresVotingState(t *testing.T) {
 func TestProposeEditCreatesSlotWithSeedFragment(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestProposeEditCreatesSlotWithSeedFragment(t *testing.T) {
 func TestProposeEditSameRangeReusesSlot(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestProposeEditSameRangeReusesSlot(t *testing.T) {
 func TestProposeEditDisjointRangesCoexistInSameRound(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare la republique."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestProposeEditDisjointRangesCoexistInSameRound(t *testing.T) {
 func TestProposeEditPartiallyOverlappingRangeRejected(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestProposeEditPartiallyOverlappingRangeRejected(t *testing.T) {
 func TestProposeEditRejectsInvalidRange(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestProposeEditUnknownText(t *testing.T) {
 func TestProposeEditRespectsRuneBoundaries(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Liberté, égalité, fraternité."
-	text, err := repo.CreateText("Devise", content)
+	text, err := repo.CreateText("Devise", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestProposeEditRespectsRuneBoundaries(t *testing.T) {
 func TestWinningFragmentDefaultsToSeedWithNoVotes(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestWinningFragmentDefaultsToSeedWithNoVotes(t *testing.T) {
 func TestWinningFragmentPicksMostVotes(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func TestWinningFragmentPicksMostVotes(t *testing.T) {
 func TestCloseRoundSplicesWinnersAndPreservesGaps(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare la republique unie."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestCloseRoundSplicesWinnersAndPreservesGaps(t *testing.T) {
 
 func TestCloseRoundNoOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func TestCloseRoundNoOpenRound(t *testing.T) {
 
 func TestTextWithSlotsNoOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +490,7 @@ func TestTextWithSlotsNoOpenRound(t *testing.T) {
 func TestTextWithSlotsOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +525,7 @@ func TestTextWithSlotsUnknownText(t *testing.T) {
 func TestSecondRoundBuildsOnClosedRoundContent(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +583,7 @@ func TestSecondRoundBuildsOnClosedRoundContent(t *testing.T) {
 func TestWinningFragmentTieBreaksOnEarliestProposal(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content)
+	text, err := repo.CreateText("Constitution", content, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -611,5 +611,230 @@ func TestCastVoteUnknownFragment(t *testing.T) {
 	repo := newTestRepository(t)
 	if err := repo.CastVote("does-not-exist", "user-1"); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteUserVotesRemovesOnlyThatUser(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end := runeRange(content, "francais")
+	f1, err := repo.ProposeEdit(text.ID, start, end, "français", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.CastVote(f1.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(f1.ID, "user-2"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteUserVotes("user-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	votes, err := repo.VoteCount(f1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 1 {
+		t.Fatalf("VoteCount after deleting user-1's vote = %d, want 1 (user-2's should remain)", votes)
+	}
+
+	// user-1 casting again should behave as a first-time vote (no leftover
+	// choice pointer confusing the withdraw-previous-vote logic).
+	if err := repo.CastVote(f1.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	votes, err = repo.VoteCount(f1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 2 {
+		t.Fatalf("VoteCount after user-1 re-votes = %d, want 2", votes)
+	}
+}
+
+func TestDeleteUserVotesNoVotesIsNoop(t *testing.T) {
+	repo := newTestRepository(t)
+	if err := repo.DeleteUserVotes("nobody"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteUserFragmentsRemovesOnlyThatAuthorsFragments(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end := runeRange(content, "francais")
+
+	alicesFragment, err := repo.ProposeEdit(text.ID, start, end, "français", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobsFragment, err := repo.addFragment(text.ID, alicesFragment.SlotID, "Francais", "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A third user votes for alice's fragment — that vote and the voter's
+	// current-choice pointer should both disappear once alice's fragment
+	// (and only alice's) is deleted.
+	if err := repo.CastVote(alicesFragment.ID, "carol"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(bobsFragment.ID, "dave"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteUserFragments("alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	fragments, err := repo.Fragments(text.ID, alicesFragment.SlotID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, f := range fragments {
+		ids = append(ids, f.ID)
+		if f.AuthorID == "alice" {
+			t.Fatalf("alice's fragment %s should have been deleted, still present: %+v", f.ID, ids)
+		}
+	}
+	// Seed + bob's fragment should remain.
+	if len(fragments) != 2 {
+		t.Fatalf("expected 2 remaining fragments (seed + bob), got %d: %+v", len(fragments), ids)
+	}
+
+	if _, err := repo.Fragment(alicesFragment.ID); err != ErrNotFound {
+		t.Fatalf("expected alice's fragment to be gone, got err=%v", err)
+	}
+
+	// carol's vote for the now-deleted fragment must be gone too.
+	votes, err := repo.VoteCount(alicesFragment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 0 {
+		t.Fatalf("VoteCount for deleted fragment = %d, want 0", votes)
+	}
+
+	// bob's fragment and dave's vote for it are untouched.
+	votes, err = repo.VoteCount(bobsFragment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 1 {
+		t.Fatalf("VoteCount for bob's fragment = %d, want 1 (dave's vote should remain)", votes)
+	}
+
+	// carol voting again for whatever's left of the slot should behave as a
+	// first-time vote — no stale choice pointer left over from the deleted
+	// fragment confusing the withdraw-previous-vote logic.
+	if err := repo.CastVote(bobsFragment.ID, "carol"); err != nil {
+		t.Fatal(err)
+	}
+	votes, err = repo.VoteCount(bobsFragment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 2 {
+		t.Fatalf("VoteCount for bob's fragment after carol votes = %d, want 2", votes)
+	}
+}
+
+func TestDeleteUserFragmentsNoFragmentsIsNoop(t *testing.T) {
+	repo := newTestRepository(t)
+	if err := repo.DeleteUserFragments("nobody"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteUserTextsRemovesEntireVersionChain(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	original, err := repo.CreateText("Constitution", content, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end := runeRange(content, "francais")
+	challenger, err := repo.ProposeEdit(original.ID, start, end, "français", "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(challenger.ID, "carol"); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome, err := repo.CloseRound(original.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forked := outcome.Text
+	if forked.CreatedBy != "alice" {
+		t.Fatalf("forked text CreatedBy = %q, want %q (should propagate through CloseRound)", forked.CreatedBy, "alice")
+	}
+
+	// Open a second round on the forked text, so its own version chain (and
+	// bob's fragment/carol's vote on it) also has to be torn down.
+	forkedStart, forkedEnd := runeRange(forked.Content, "français")
+	secondChallenger, err := repo.ProposeEdit(forked.ID, forkedStart, forkedEnd, "FRANÇAIS", "dave")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A text alice did NOT create must survive untouched.
+	unrelated, err := repo.CreateText("Autre texte", "Contenu neutre.", "eve")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteUserTexts("alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.Text(original.ID); err != ErrNotFound {
+		t.Fatalf("expected original text to be gone, got err=%v", err)
+	}
+	if _, err := repo.Text(forked.ID); err != ErrNotFound {
+		t.Fatalf("expected forked text to be gone, got err=%v", err)
+	}
+	if _, err := repo.Fragment(challenger.ID); err != ErrNotFound {
+		t.Fatalf("expected bob's fragment on the original text to be gone, got err=%v", err)
+	}
+	if _, err := repo.Fragment(secondChallenger.ID); err != ErrNotFound {
+		t.Fatalf("expected dave's fragment on the forked text to be gone, got err=%v", err)
+	}
+	votes, err := repo.VoteCount(challenger.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 0 {
+		t.Fatalf("VoteCount for deleted fragment = %d, want 0", votes)
+	}
+
+	still, err := repo.Text(unrelated.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if still.ID != unrelated.ID {
+		t.Fatalf("unrelated text should be untouched, got %+v", still)
+	}
+}
+
+func TestDeleteUserTextsNoTextsIsNoop(t *testing.T) {
+	repo := newTestRepository(t)
+	if err := repo.DeleteUserTexts("nobody"); err != nil {
+		t.Fatal(err)
 	}
 }

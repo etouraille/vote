@@ -32,11 +32,13 @@ type credentialsRequest struct {
 }
 
 type sessionResponse struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expiresAt"`
-	UserID    string `json:"userId"`
-	Email     string `json:"email"`
-	Pseudo    string `json:"pseudo,omitempty"`
+	Token       string           `json:"token"`
+	ExpiresAt   string           `json:"expiresAt"`
+	UserID      string           `json:"userId"`
+	Email       string           `json:"email"`
+	Pseudo      string           `json:"pseudo,omitempty"`
+	Root        bool             `json:"root"`
+	Permissions rbac.Permissions `json:"permissions"`
 }
 
 type registerAck struct {
@@ -125,7 +127,7 @@ func loginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte) http.Ha
 			return
 		}
 
-		token, expiresAt, err := issueToken(rbacStore, jwtSecret, user)
+		token, expiresAt, perms, root, err := issueToken(rbacStore, jwtSecret, user)
 		if err != nil {
 			log.Printf("issuing token for %s: %v", user.Email, err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
@@ -137,11 +139,13 @@ func loginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte) http.Ha
 			pseudo = *user.Pseudo
 		}
 		writeJSON(w, http.StatusOK, sessionResponse{
-			Token:     token,
-			ExpiresAt: expiresAt.Format(time.RFC3339),
-			UserID:    user.ID,
-			Email:     user.Email,
-			Pseudo:    pseudo,
+			Token:       token,
+			ExpiresAt:   expiresAt.Format(time.RFC3339),
+			UserID:      user.ID,
+			Email:       user.Email,
+			Pseudo:      pseudo,
+			Root:        root,
+			Permissions: perms,
 		})
 	}
 }
@@ -151,14 +155,14 @@ func loginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte) http.Ha
 // its permission claims come from the rbac directory entry user.RbacUUID
 // points at, if any has been assigned yet. A user with no rbac UUID still
 // gets a valid token — they just can't do anything gated by a permission
-// until an admin assigns them one (see admin.go).
-func issueToken(rbacStore *rbac.Store, jwtSecret []byte, user *User) (token string, expiresAt time.Time, err error) {
-	var perms rbac.Permissions
-	var root bool
+// until an admin assigns them one (see admin.go). Root/perms are also
+// returned alongside the token so loginHandler can hand them straight to
+// the front end without a follow-up /api/me round trip.
+func issueToken(rbacStore *rbac.Store, jwtSecret []byte, user *User) (token string, expiresAt time.Time, perms rbac.Permissions, root bool, err error) {
 	if user.RbacUUID != nil {
 		rbacUser, err := rbacStore.GetUser(*user.RbacUUID)
 		if err != nil && !errors.Is(err, rbac.ErrNotFound) {
-			return "", time.Time{}, err
+			return "", time.Time{}, rbac.Permissions{}, false, err
 		}
 		if err == nil {
 			perms = rbacUser.Permissions
@@ -175,9 +179,9 @@ func issueToken(rbacStore *rbac.Store, jwtSecret []byte, user *User) (token stri
 	}
 	token, err = rbac.SignToken(claims, jwtSecret)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, rbac.Permissions{}, false, err
 	}
-	return token, expiresAt, nil
+	return token, expiresAt, perms, root, nil
 }
 
 type confirmRequest struct {

@@ -105,7 +105,7 @@ func main() {
 	mux.HandleFunc("GET /api/me", meHandler(store))
 	mux.HandleFunc("GET /api/admin/users", listUsersHandler(store, rbacStore))
 	mux.HandleFunc("PUT /api/admin/users/{id}/permissions", assignPermissionsHandler(store, rbacStore))
-	mux.HandleFunc("DELETE /api/admin/users/{id}", deleteUserHandler(store, rbacStore))
+	mux.HandleFunc("DELETE /api/admin/users/{id}", deleteUserHandler(store, rbacStore, textRepo))
 	mux.HandleFunc("POST /api/texts", createTextHandler(textRepo, searchIndex))
 	mux.HandleFunc("GET /api/texts", recentTextsHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/search", searchTextsHandler(searchIndex))

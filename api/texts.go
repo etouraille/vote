@@ -79,7 +79,9 @@ func decodeTextPayload(w http.ResponseWriter, r *http.Request) (title, content s
 // top of text creation, not a dependency of it.
 func createTextHandler(repo *queel.Repository, index *searchIndexer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !requirePermission(w, r, rbac.ActionCreateText) {
+		claims, ok := claimsFromContext(r)
+		if !ok || !claims.Allows(rbac.ActionCreateText) {
+			writeError(w, http.StatusForbidden, "droits insuffisants")
 			return
 		}
 
@@ -88,7 +90,7 @@ func createTextHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 			return
 		}
 
-		text, err := repo.CreateText(title, content)
+		text, err := repo.CreateText(title, content, claims.Subject)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
