@@ -63,7 +63,10 @@ export class HomePage implements OnInit {
 
   search(): void {
     const query = this.searchQuery.trim();
-    if (!query) return;
+    if (!query) {
+      this.clearSearch();
+      return;
+    }
 
     this.searching.set(true);
     this.searchError.set(null);
@@ -77,5 +80,13 @@ export class HomePage implements OnInit {
         this.searchError.set(err.error?.error ?? 'Erreur lors de la recherche');
       },
     });
+  }
+
+  // Dismisses the search-results overlay (see home.html), undimming the
+  // "Derniers textes" grid behind it — called both from its explicit close
+  // button and when the query is cleared back to empty.
+  clearSearch(): void {
+    this.searchResults.set(null);
+    this.searchError.set(null);
   }
 }
