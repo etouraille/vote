@@ -3,6 +3,7 @@ package rbac
 import (
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -123,5 +124,101 @@ func TestOpenMissingFileStartsEmpty(t *testing.T) {
 	}
 	if got := len(store.ListUsers()); got != 0 {
 		t.Fatalf("expected empty directory, got %d users", got)
+	}
+}
+
+func TestCreateUserWithIDIsIdempotent(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.CreateUserWithID("root-uuid", true, Permissions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateUserWithID("root-uuid", true, Permissions{}); !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("expected ErrAlreadyExists bootstrapping the same UUID twice (see api/main.go's QUEEL_ROOT_UUID handling), got %v", err)
+	}
+}
+
+// TestTwoStoreHandlesSharingOneDatabaseFileStayConsistent is the scenario
+// this migration exists for: several cluster nodes on one machine, each its
+// own process (here: its own *Store, its own *sql.DB connection), pointed
+// at the same QUEEL_RBAC_PATH. The flat-JSON-file Store this replaced was
+// never actually safe for that — no cross-process coordination beyond an
+// in-process mutex, and a "rewrite the whole file" write under a concurrent
+// writer elsewhere could corrupt it.
+func TestTwoStoreHandlesSharingOneDatabaseFileStayConsistent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.db")
+
+	storeA, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storeA.Close() })
+
+	storeB, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storeB.Close() })
+
+	user, err := storeA.CreateUser(true, Permissions{CanVote: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fetched, err := storeB.GetUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fetched.Root || !fetched.Permissions.CanVote {
+		t.Fatalf("storeB should see what storeA wrote to the shared file, got %+v", fetched)
+	}
+
+	if _, err := storeB.UpdateUser(user.ID, false, Permissions{CanCreateText: true}); err != nil {
+		t.Fatal(err)
+	}
+	reFetched, err := storeA.GetUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reFetched.Root || !reFetched.Permissions.CanCreateText {
+		t.Fatalf("storeA should see storeB's update, got %+v", reFetched)
+	}
+}
+
+// TestConcurrentCreatesDontCorruptOrDuplicate hammers one Store from many
+// goroutines at once — the in-process equivalent of many concurrent
+// requests hitting PUT /api/admin/users/{id}/permissions. Every create must
+// either succeed cleanly or fail with a real error; none may be silently
+// lost or duplicated the way a "read whole file, mutate, write whole file"
+// race could before.
+func TestConcurrentCreatesDontCorruptOrDuplicate(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "concurrent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := store.CreateUser(false, Permissions{}); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent CreateUser failed: %v", err)
+	}
+
+	if got := len(store.ListUsers()); got != n {
+		t.Fatalf("expected %d users after %d concurrent creates, got %d", n, n, got)
 	}
 }

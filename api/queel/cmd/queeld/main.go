@@ -21,6 +21,11 @@
 // QUEEL_GOSSIP_INTERVAL variables, and the join sequence itself, are handled
 // by queel/bootstrap — the same package a host application embedding queel
 // directly (e.g. this repo's api) uses to become a cluster node too.
+//
+// rbac follows the same split: single-node, it's a local SQLite database
+// (QUEEL_RBAC_PATH); clustered, it rides the same replicated Store as
+// everything else instead (see queel/rbac's OpenWithStore), since a local
+// file can't safely be shared once nodes aren't on the same machine.
 package main
 
 import (
@@ -67,14 +72,24 @@ func main() {
 
 	repo := queel.NewRepository(store)
 
-	rbacPath := os.Getenv("QUEEL_RBAC_PATH")
-	if rbacPath == "" {
-		rbacPath = filepath.Join(dataDir, "rbac.json")
+	// In cluster mode, rbac rides the same replicated store as everything
+	// else instead of a local SQLite file — see queel/rbac's OpenWithStore
+	// doc comment. QUEEL_RBAC_PATH is only consulted, and only matters, in
+	// single-node mode.
+	var rbacStore *rbac.Store
+	if clustered {
+		rbacStore = rbac.OpenWithStore(store)
+	} else {
+		rbacPath := os.Getenv("QUEEL_RBAC_PATH")
+		if rbacPath == "" {
+			rbacPath = filepath.Join(dataDir, "rbac.db")
+		}
+		rbacStore, err = rbac.Open(rbacPath)
+		if err != nil {
+			log.Fatalf("rbac store: %v", err)
+		}
 	}
-	rbacStore, err := rbac.Open(rbacPath)
-	if err != nil {
-		log.Fatalf("rbac store: %v", err)
-	}
+	defer rbacStore.Close()
 
 	// See api/.env.example for the matching QUEEL_ROOT_UUID/JWT_SECRET
 	// story on the issuer side: this bootstrap only ever needs to run once

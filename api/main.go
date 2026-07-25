@@ -72,14 +72,26 @@ func main() {
 		log.Fatal("JWT_SECRET must be set — it signs every session token, so there's no safe default")
 	}
 
-	rbacPath := os.Getenv("QUEEL_RBAC_PATH")
-	if rbacPath == "" {
-		rbacPath = filepath.Join(queelDataDir, "rbac.json")
+	// In cluster mode, rbac rides the same replicated, quorum-consistent
+	// Store textRepo already uses instead of a local SQLite file — see
+	// queel/rbac's OpenWithStore doc comment for why that matters the
+	// moment nodes aren't all on one machine (Open's SQLite file can't be
+	// safely shared that way). QUEEL_RBAC_PATH is only consulted, and only
+	// matters, in single-node mode.
+	var rbacStore *rbac.Store
+	if clustered {
+		rbacStore = rbac.OpenWithStore(queelStore)
+	} else {
+		rbacPath := os.Getenv("QUEEL_RBAC_PATH")
+		if rbacPath == "" {
+			rbacPath = filepath.Join(queelDataDir, "rbac.db")
+		}
+		rbacStore, err = rbac.Open(rbacPath)
+		if err != nil {
+			log.Fatalf("rbac store: %v", err)
+		}
 	}
-	rbacStore, err := rbac.Open(rbacPath)
-	if err != nil {
-		log.Fatalf("rbac store: %v", err)
-	}
+	defer rbacStore.Close()
 
 	// QUEEL_ROOT_UUID bootstraps the very first root rbac user under a
 	// caller-chosen UUID, so an operator has one root identity to assign

@@ -1,10 +1,14 @@
 // Package rbac is queel's user/role directory: who is allowed to vote,
 // create texts, close a round, open a selection, or propose content for
 // one. It is deliberately independent of queel's own LSM-tree Store — the
-// directory lives in a single flat file, administered over a local-only
-// Unix socket, so that "who can do what" stays simple to inspect, edit by
-// hand in an emergency, and reason about even if the storage engine itself
-// is unavailable.
+// directory lives in its own small SQLite database (see Store), administered
+// over a local-only Unix socket, so that "who can do what" stays simple to
+// inspect (any sqlite3 client works) and reason about even if the storage
+// engine itself is unavailable. SQLite specifically — rather than an
+// in-memory map with a hand-rolled flat file behind it, this package's
+// original design — because several api processes sharing one
+// QUEEL_RBAC_PATH (several cluster nodes on one machine, e.g.) need real
+// transactions and locking to do that safely.
 package rbac
 
 import "time"
