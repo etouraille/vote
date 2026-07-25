@@ -4,7 +4,6 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { SearchResult } from '../../model/text.model';
-import { AuthService } from '../../service/auth';
 import { TextService } from '../../service/text';
 import { firstWords } from '../../util/words';
 
@@ -23,28 +22,18 @@ export interface RecentTextCard {
   templateUrl: './home.html',
 })
 export class HomePage implements OnInit {
-  private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly textService = inject(TextService);
 
-  title = '';
   searchQuery = '';
 
   readonly searching = signal(false);
   readonly searchResults = signal<SearchResult[] | null>(null);
   readonly searchError = signal<string | null>(null);
 
-  // Only known once /api/me answers — the create-text form stays hidden
-  // until then, rather than flashing and disappearing if the user turns
-  // out not to have the right.
-  readonly canCreateText = signal(false);
-
   readonly recentTexts = signal<RecentTextCard[]>([]);
 
   ngOnInit(): void {
-    this.auth.me().subscribe((me) => {
-      this.canCreateText.set(me.root || me.permissions.canCreateText);
-    });
     this.loadRecentTexts();
   }
 
@@ -80,11 +69,5 @@ export class HomePage implements OnInit {
 
   openResult(result: SearchResult): void {
     this.router.navigate(['/editor'], { queryParams: { id: result.textId } });
-  }
-
-  createText(): void {
-    const title = this.title.trim();
-    if (!title) return;
-    this.router.navigate(['/editor'], { queryParams: { title } });
   }
 }

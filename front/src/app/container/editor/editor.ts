@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { docFromText, docFromTextWithHighlights, EditorComponent, TextSelection } from '../../component/app-editor/app-editor';
 import { AuthService } from '../../service/auth';
@@ -27,7 +28,7 @@ function overlapsPartially(a: { start: number; end: number }, b: { start: number
 
 @Component({
   selector: 'editor-page',
-  imports: [EditorComponent, RouterLink],
+  imports: [EditorComponent, RouterLink, FormsModule],
   templateUrl: './editor.html',
   styleUrl: './editor.css',
 })
@@ -37,10 +38,10 @@ export class EditorPage {
   private readonly auth = inject(AuthService);
   private readonly lastTextStorage = inject(LastTextStorage);
 
-  // Mutable: a title passed via ?title= is known immediately, but opening an
-  // existing text via ?id= (e.g. from a search result) only resolves the
-  // title once the fetch below completes.
-  readonly title = signal(this.route.snapshot.queryParamMap.get('title') ?? '');
+  // Editable until the text is first saved (see save()); opening an
+  // existing text via ?id= (e.g. from a search result) resolves it once the
+  // fetch below completes, and it becomes read-only from then on.
+  readonly title = signal('');
 
   // Gates the "Sauvegarder le texte" button — only relevant for the
   // create-a-new-text case (no savedTextId yet); see save().

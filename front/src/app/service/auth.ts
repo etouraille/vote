@@ -42,6 +42,7 @@ export class AuthService {
             pseudo: me.pseudo,
             displayName: me.pseudo || me.email.split('@')[0],
             root: me.root,
+            canCreateText: me.root || me.permissions.canCreateText,
           });
         });
       });
@@ -90,6 +91,7 @@ export class AuthService {
         pseudo: response.pseudo,
         displayName: response.pseudo || response.email.split('@')[0],
         root: response.root,
+        canCreateText: response.root || response.permissions.canCreateText,
       },
       tokens: { accessToken: response.token, expiresAt: Date.parse(response.expiresAt) },
     };

@@ -7,6 +7,14 @@
       <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
     </div>
     <div class="flex items-center gap-2">
+      @if (user.canCreateText) {
+        <a
+          routerLink="/editor"
+          class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          Créer
+        </a>
+      }
       @if (user.root) {
         <a
           routerLink="/backoffice"

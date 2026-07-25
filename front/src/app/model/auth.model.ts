@@ -1,9 +1,12 @@
+import { Permissions } from './admin.model';
+
 export interface User {
   id: string;
   email: string;
   displayName: string;
   pseudo?: string;
   root: boolean;
+  canCreateText: boolean;
 }
 
 export interface AuthTokens {
@@ -28,6 +31,7 @@ export interface AuthResponse {
   email: string;
   pseudo?: string;
   root: boolean;
+  permissions: Permissions;
 }
 
 export interface RegisterAck {

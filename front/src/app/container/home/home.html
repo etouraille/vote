@@ -45,30 +45,6 @@
     }
   </section>
 
-  @if (canCreateText()) {
-    <section class="mx-auto max-w-sm px-4 py-6">
-      <form (ngSubmit)="createText()" class="flex items-center gap-2">
-        <label class="sr-only" for="text-title">Titre</label>
-        <input
-          id="text-title"
-          type="text"
-          name="title"
-          [(ngModel)]="title"
-          required
-          placeholder="Titre du texte"
-          class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-        />
-        <button
-          type="submit"
-          [disabled]="!title.trim()"
-          class="shrink-0 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          Créer
-        </button>
-      </form>
-    </section>
-  }
-
   @if (recentTexts().length > 0) {
     <section class="mx-auto max-w-2xl px-4 pb-10">
       <h2 class="mb-3 text-sm font-medium text-slate-500">Derniers textes</h2>

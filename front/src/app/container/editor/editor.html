@@ -4,7 +4,19 @@
   </header>
 
   <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-    <h1 class="text-xl font-semibold text-slate-900">{{ title() }}</h1>
+    @if (!savedTextId()) {
+      <label class="sr-only" for="text-title">Titre</label>
+      <input
+        id="text-title"
+        type="text"
+        [ngModel]="title()"
+        (ngModelChange)="title.set($event)"
+        placeholder="Titre du texte"
+        class="w-full rounded-md border border-slate-300 px-3 py-2 text-xl font-semibold text-slate-900 focus:border-slate-500 focus:outline-none"
+      />
+    } @else {
+      <h1 class="text-xl font-semibold text-slate-900">{{ title() }}</h1>
+    }
 
     @if (loading()) {
       <p class="mt-6 text-sm text-slate-400">Chargement du texte…</p>
@@ -79,7 +91,7 @@
             <button
               type="button"
               (click)="save()"
-              [disabled]="saving()"
+              [disabled]="saving() || !title().trim()"
               class="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {{ saving() ? 'Sauvegarde…' : 'Sauvegarder le texte' }}
