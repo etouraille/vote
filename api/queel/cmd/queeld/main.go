@@ -16,21 +16,24 @@
 // learns the rest of the membership from it by gossip (QUEEL_GOSSIP_INTERVAL,
 // default 2s). The very first node of a new cluster leaves QUEEL_SEED_NODE
 // unset — it simply starts a cluster containing only itself.
+//
+// All four QUEEL_NODE_ADDRESS/QUEEL_SEED_NODE/QUEEL_REPLICATION_FACTOR/
+// QUEEL_GOSSIP_INTERVAL variables, and the join sequence itself, are handled
+// by queel/bootstrap — the same package a host application embedding queel
+// directly (e.g. this repo's api) uses to become a cluster node too.
 package main
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"time"
 
 	"github.com/etouraille/queel"
+	"github.com/etouraille/queel/bootstrap"
 	"github.com/etouraille/queel/cluster"
 	"github.com/etouraille/queel/rbac"
 	"github.com/etouraille/queel/server"
@@ -52,15 +55,14 @@ func main() {
 	mux.Handle("/internal/", server.NewInternalHandler(engine))
 
 	var store queel.Store = engine
-	clustered := false
 
-	if selfAddr := os.Getenv("QUEEL_NODE_ADDRESS"); selfAddr != "" {
-		coordinator, err := joinCluster(mux, cluster.Node(selfAddr))
-		if err != nil {
-			log.Fatal(err)
-		}
+	coordinator, membership, clustered, err := bootstrap.JoinFromEnv(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	if clustered {
+		mux.HandleFunc("POST /internal/gossip", server.GossipHandler(membership))
 		store = cluster.NewDistributedStore(coordinator)
-		clustered = true
 	}
 
 	repo := queel.NewRepository(store)
@@ -110,55 +112,6 @@ func main() {
 	if err := http.Serve(listener, mux); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// joinCluster wires up gossip-based membership for self, optionally joining
-// through QUEEL_SEED_NODE, and returns a Coordinator that stays up to date
-// with the cluster's membership as it changes.
-func joinCluster(mux *http.ServeMux, self cluster.Node) (*cluster.Coordinator, error) {
-	rf := 3
-	if rfEnv := os.Getenv("QUEEL_REPLICATION_FACTOR"); rfEnv != "" {
-		parsed, err := strconv.Atoi(rfEnv)
-		if err != nil {
-			return nil, fmt.Errorf("invalid QUEEL_REPLICATION_FACTOR: %w", err)
-		}
-		rf = parsed
-	}
-
-	interval := 2 * time.Second
-	if intervalEnv := os.Getenv("QUEEL_GOSSIP_INTERVAL"); intervalEnv != "" {
-		parsed, err := time.ParseDuration(intervalEnv)
-		if err != nil {
-			return nil, fmt.Errorf("invalid QUEEL_GOSSIP_INTERVAL: %w", err)
-		}
-		interval = parsed
-	}
-
-	membership := cluster.NewMembership(self)
-	mux.HandleFunc("POST /internal/gossip", server.GossipHandler(membership))
-
-	if seed := os.Getenv("QUEEL_SEED_NODE"); seed != "" {
-		joinCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := membership.Join(joinCtx, cluster.Node(seed)); err != nil {
-			return nil, fmt.Errorf("joining cluster via seed %s: %w", seed, err)
-		}
-	}
-
-	coordinator := cluster.NewCoordinator(cluster.NewRing([]cluster.Node{self}, 1), map[cluster.Node]*cluster.PeerClient{})
-	coordinator.SetMembers(membership.AliveNodes(), rf)
-
-	ctx := context.Background()
-	membership.Start(ctx, interval)
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for range ticker.C {
-			coordinator.SetMembers(membership.AliveNodes(), rf)
-		}
-	}()
-
-	return coordinator, nil
 }
 
 // listen opens a Unix domain socket at QUEEL_SOCKET if set, otherwise a TCP

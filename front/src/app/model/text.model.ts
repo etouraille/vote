@@ -14,6 +14,8 @@ export interface SearchResult {
   textId: string;
   title: string;
   score: number;
+  // 0 means no round is currently open on this text.
+  roundNumber: number;
 }
 
 export interface Fragment {

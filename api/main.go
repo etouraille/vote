@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"github.com/etouraille/queel"
+	"github.com/etouraille/queel/bootstrap"
+	"github.com/etouraille/queel/cluster"
 	"github.com/etouraille/queel/rbac"
+	"github.com/etouraille/queel/server"
 	_ "github.com/lib/pq"
 )
 
@@ -42,7 +45,27 @@ func main() {
 		log.Fatalf("queel engine: %v", err)
 	}
 	defer queelEngine.Close()
-	textRepo := queel.NewRepository(queelEngine)
+
+	// QUEEL_NODE_ADDRESS (see queel/bootstrap) opts this process into
+	// cluster mode: it still stores its own shard locally in queelEngine,
+	// but textRepo now reads and writes through a replicated,
+	// quorum-consistent DistributedStore spread across every node in the
+	// cluster instead of just this one's local engine. Every /api/... route
+	// below is wired against textRepo exactly as in single-node mode — the
+	// rbac/JWT protection on those routes lives entirely in this file's
+	// handlers and requireToken, which never touch the Store, so clustering
+	// the storage layer changes nothing about which routes are protected or
+	// how.
+	var queelStore queel.Store = queelEngine
+	coordinator, membership, clustered, err := bootstrap.JoinFromEnv(context.Background())
+	if err != nil {
+		log.Fatalf("joining queel cluster: %v", err)
+	}
+	if clustered {
+		serveInternalReplication(queelEngine, membership)
+		queelStore = cluster.NewDistributedStore(coordinator)
+	}
+	textRepo := queel.NewRepository(queelStore)
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
@@ -108,7 +131,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/admin/users/{id}", deleteUserHandler(store, rbacStore, textRepo))
 	mux.HandleFunc("POST /api/texts", createTextHandler(textRepo, searchIndex))
 	mux.HandleFunc("GET /api/texts", recentTextsHandler(textRepo))
-	mux.HandleFunc("GET /api/texts/search", searchTextsHandler(searchIndex))
+	mux.HandleFunc("GET /api/texts/search", searchTextsHandler(searchIndex, textRepo))
 	mux.HandleFunc("GET /api/texts/{id}", getTextHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/{id}/with-slots", textWithSlotsHandler(textRepo))
 	mux.HandleFunc("PUT /api/texts/{id}", updateTextHandler(textRepo))
@@ -125,10 +148,34 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("api listening on :%s", port)
+	log.Printf("api listening on :%s (clustered: %v)", port, clustered)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// serveInternalReplication starts this node's internal replication listener
+// on QUEEL_INTERNAL_PORT — deliberately a separate port from the public API
+// (see server.NewInternalHandler's doc comment): its /internal/... routes
+// are raw, unauthenticated Put/Get/Scan/gossip, meant only for other
+// cluster nodes on a trusted network, never for end-user traffic. Sharing
+// the public port would let anyone who can reach it bypass every rbac check
+// in this file and manipulate queel's storage directly.
+func serveInternalReplication(engine *queel.Engine, membership *cluster.Membership) {
+	internalMux := http.NewServeMux()
+	internalMux.Handle("/internal/", server.NewInternalHandler(engine))
+	internalMux.HandleFunc("POST /internal/gossip", server.GossipHandler(membership))
+
+	internalPort := os.Getenv("QUEEL_INTERNAL_PORT")
+	if internalPort == "" {
+		internalPort = "9090"
+	}
+	go func() {
+		log.Printf("queel internal replication listening on :%s", internalPort)
+		if err := http.ListenAndServe(":"+internalPort, internalMux); err != nil {
+			log.Fatalf("internal cluster listener: %v", err)
+		}
+	}()
 }
 
 func waitForDB(db *sql.DB, timeout time.Duration) error {

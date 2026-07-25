@@ -130,8 +130,11 @@ func closeRoundHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 
 // searchTextsHandler answers RAG search over the finalized-text corpus: the
 // query is embedded the same way the indexed texts were, and Qdrant returns
-// the closest matches by cosine similarity.
-func searchTextsHandler(index *searchIndexer) http.HandlerFunc {
+// the closest matches by cosine similarity. Each result's round number is
+// filled in live from queel (not stored in the vector index, which would go
+// stale the moment a round opens or closes after indexing) — 0 means no
+// round is currently open on that text.
+func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if len(q) == 0 {
@@ -144,6 +147,18 @@ func searchTextsHandler(index *searchIndexer) http.HandlerFunc {
 			log.Printf("search failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
+		}
+
+		for i, result := range results {
+			round, err := repo.CurrentRound(result.TextID)
+			if err != nil {
+				if !errors.Is(err, queel.ErrNotFound) {
+					writeError(w, http.StatusInternalServerError, "erreur serveur")
+					return
+				}
+				continue
+			}
+			results[i].RoundNumber = round.Number
 		}
 
 		writeJSON(w, http.StatusOK, results)

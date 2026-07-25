@@ -87,6 +87,9 @@ type SearchResult struct {
 	TextID string  `json:"textId"`
 	Title  string  `json:"title"`
 	Score  float64 `json:"score"`
+	// RoundNumber is filled in by searchTextsHandler after Search returns —
+	// see its doc comment. It's not part of what the vector index knows.
+	RoundNumber int `json:"roundNumber"`
 }
 
 // Search embeds the query and returns the closest texts by cosine

@@ -79,7 +79,14 @@
             @for (result of results; track result.textId) {
               <li class="flex flex-col gap-1 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900">
                 <div class="flex items-center justify-between gap-2">
-                  <span class="truncate">{{ result.title }}</span>
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span class="truncate">{{ result.title }}</span>
+                    @if (result.roundNumber > 0) {
+                      <span class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        Round {{ result.roundNumber }}
+                      </span>
+                    }
+                  </span>
                   <span class="flex shrink-0 items-center gap-2">
                     <span class="text-xs text-slate-400">{{ result.score | number: '1.0-2' }}</span>
                     @if (canAmendText()) {
