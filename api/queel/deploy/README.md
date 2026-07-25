@@ -23,11 +23,16 @@ From this directory:
 ```bash
 make up       # builds, then starts node1, then node2 and node3 through it
 make status   # shows which nodes are still running
-make logs     # tails all 3 logs
 make down     # stops all 3
-make clean    # down + wipes node1/, node2/, node3/, rbac.db(-wal/-shm), logs, pids
+make clean    # down + wipes node1/, node2/, node3/, rbac.db(-wal/-shm), pids
 make restart  # down + up
 ```
+
+`make up` streams all 3 nodes' logs straight to the terminal it's run from
+(no per-node log file to go tail elsewhere) — every line already names its
+own port, so the 3 nodes stay distinguishable even interleaved. Keep that
+terminal open for as long as the cluster should stay up: nothing shields
+these processes from a SIGHUP anymore.
 
 ## Manual equivalent
 
@@ -78,5 +83,5 @@ read-repair once it rejoins.
 this cluster's state — `make clean` wipes them, or by hand:
 
 ```bash
-rm -rf node1 node2 node3 rbac.db rbac.db-wal rbac.db-shm *.log *.pid
+rm -rf node1 node2 node3 rbac.db rbac.db-wal rbac.db-shm *.pid
 ```
