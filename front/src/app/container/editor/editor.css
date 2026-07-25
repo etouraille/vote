@@ -1,0 +1,72 @@
+.editor-slide-in {
+  animation: editor-slide-in 300ms ease-out;
+}
+
+.editor-slide-out {
+  /* Taken out of flex flow so the incoming panel isn't squeezed by an
+     element that's on its way out — it just overlays in place, on top of
+     its own now-empty flex-1 slot, while it slides away. */
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateX(-100%);
+  transition: opacity 250ms ease-in, transform 250ms ease-in;
+}
+
+.panel-slide-in {
+  animation: panel-slide-in 300ms ease-out;
+}
+
+.panel-slide-out {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: opacity 250ms ease-in, transform 250ms ease-in;
+}
+
+@keyframes editor-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes panel-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.sidebar-fade-in {
+  animation: sidebar-fade-in 250ms ease-out;
+}
+
+.sidebar-fade-out {
+  /* Taken out of flex flow immediately so the proposal zone claims the full
+     row width right away instead of waiting for this fade to finish. */
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12rem;
+  opacity: 0;
+  transition: opacity 150ms ease-in;
+}
+
+@keyframes sidebar-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

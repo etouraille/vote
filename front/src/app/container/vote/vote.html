@@ -1,0 +1,83 @@
+<div class="mx-auto max-w-3xl px-4 py-8">
+  <header class="flex items-center pb-3">
+    <a routerLink="/home" class="text-sm text-slate-500 hover:underline">&larr; Retour</a>
+  </header>
+
+  <h1 class="text-xl font-semibold text-slate-900">
+    Voter{{ textTitle() ? ' — ' + textTitle() : '' }}
+  </h1>
+
+  @if (loading()) {
+    <p class="mt-6 text-sm text-slate-400">Chargement…</p>
+  } @else if (loadError(); as error) {
+    <p class="mt-6 text-sm text-red-600">{{ error }}</p>
+  } @else if (slotGroups().length === 0) {
+    <p class="mt-6 text-sm text-slate-500">Aucun round n'est actuellement ouvert pour ce texte.</p>
+  } @else {
+    <div class="mt-6 flex flex-col gap-10">
+      @for (group of slotGroups(); track group.slot.id) {
+        <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 class="text-sm font-medium text-slate-500">Extrait original</h2>
+          <p class="mt-2 whitespace-pre-wrap text-sm text-slate-600">{{ group.original }}</p>
+
+          <div class="mt-6 flex flex-col gap-6">
+            @if (group.fragments.length === 0) {
+              <p class="text-sm text-slate-400">Aucune proposition pour l'instant.</p>
+            }
+            @for (fv of group.fragments; track fv.fragment.id) {
+              <div class="group relative border-t border-slate-100 pt-6 first:border-t-0 first:pt-0">
+                <p class="leading-relaxed whitespace-pre-wrap text-slate-900">
+                  @for (token of fv.diff; track $index) {
+                    @switch (token.type) {
+                      @case ('removed') {
+                        <span class="bg-red-100 text-red-800 line-through">{{ token.text }}</span>
+                      }
+                      @case ('added') {
+                        <span class="bg-green-100 text-green-800">{{ token.text }}</span>
+                      }
+                      @default {
+                        <span>{{ token.text }}</span>
+                      }
+                    }
+                  }
+                </p>
+
+                @if (canVote()) {
+                  <div
+                    class="absolute inset-0 hidden items-center justify-center gap-3 bg-white/95 group-hover:flex"
+                  >
+                    <button
+                      type="button"
+                      (click)="vote(group, group.seedFragmentId)"
+                      [disabled]="group.voting() || !group.seedFragmentId"
+                      class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      Voter pour le texte original
+                    </button>
+                    <button
+                      type="button"
+                      (click)="vote(group, fv.fragment.id)"
+                      [disabled]="group.voting()"
+                      class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      Voter pour la modification
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          @if (group.votedFragmentId(); as votedId) {
+            <p class="mt-4 text-xs text-emerald-700">
+              Vote enregistré pour {{ votedId === group.seedFragmentId ? 'le texte original' : 'la modification' }}.
+            </p>
+          }
+          @if (group.error(); as error) {
+            <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+          }
+        </section>
+      }
+    </div>
+  }
+</div>

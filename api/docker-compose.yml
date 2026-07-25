@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vote-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vote
+      POSTGRES_PASSWORD: vote
+      POSTGRES_DB: vote
+    ports:
+      - "5432:5432"
+    volumes:
+      - vote-postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: vote-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - vote-qdrant-data:/qdrant/storage
+
+  # Generates the embeddings indexed into Qdrant — self-hosted, no external
+  # API key. Pull the embedding model once after first start:
+  #   docker compose exec ollama ollama pull nomic-embed-text
+  ollama:
+    image: ollama/ollama:latest
+    container_name: vote-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - vote-ollama-data:/root/.ollama
+
+volumes:
+  vote-postgres-data:
+  vote-qdrant-data:
+  vote-ollama-data:

@@ -1,0 +1,43 @@
+<div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+  <form class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm" (ngSubmit)="submit()">
+    <h1 class="text-xl font-semibold text-slate-900">Connexion</h1>
+
+    <label class="mt-6 block text-sm font-medium text-slate-700">
+      Email
+      <input
+        type="email"
+        name="email"
+        [(ngModel)]="email"
+        required
+        class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+      />
+    </label>
+
+    <label class="mt-4 block text-sm font-medium text-slate-700">
+      Mot de passe
+      <input
+        type="password"
+        name="password"
+        [(ngModel)]="password"
+        required
+        class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+      />
+    </label>
+
+    @if (error()) {
+      <p class="mt-4 text-sm text-red-600">{{ error() }}</p>
+    }
+
+    <button
+      type="submit"
+      [disabled]="submitting()"
+      class="mt-6 w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+    >
+      {{ submitting() ? 'Connexion…' : 'Se connecter' }}
+    </button>
+
+    <a routerLink="/register" class="mt-4 block text-center text-sm text-slate-500 hover:underline">
+      Pas de compte ? S'inscrire
+    </a>
+  </form>
+</div>

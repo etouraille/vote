@@ -1,0 +1,19 @@
+<div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+  <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm text-center">
+    @if (status() === 'pending') {
+      <p class="text-sm text-slate-500">Validation de votre compte…</p>
+    }
+    @if (status() === 'success') {
+      <h1 class="text-xl font-semibold text-slate-900">Compte validé</h1>
+      <p class="mt-2 text-sm text-slate-500">Vous pouvez maintenant vous connecter.</p>
+      <a routerLink="/" class="mt-6 inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+        Se connecter
+      </a>
+    }
+    @if (status() === 'error') {
+      <h1 class="text-xl font-semibold text-slate-900">Échec de la validation</h1>
+      <p class="mt-2 text-sm text-red-600">{{ error() }}</p>
+      <a routerLink="/" class="mt-6 inline-block text-sm text-slate-500 hover:underline">Retour à la connexion</a>
+    }
+  </div>
+</div>

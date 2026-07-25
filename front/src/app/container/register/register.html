@@ -1,0 +1,85 @@
+<div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+  <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    @if (!registered()) {
+      <form (ngSubmit)="submit()">
+        <h1 class="text-xl font-semibold text-slate-900">Inscription</h1>
+        <p class="mt-1 text-sm text-slate-500">Créez votre compte pour voter.</p>
+
+        <label class="mt-6 block text-sm font-medium text-slate-700">
+          Email
+          <input
+            type="email"
+            name="email"
+            [(ngModel)]="email"
+            required
+            class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          />
+        </label>
+
+        <label class="mt-4 block text-sm font-medium text-slate-700">
+          Pseudo (optionnel)
+          <input
+            type="text"
+            name="pseudo"
+            [(ngModel)]="pseudo"
+            maxlength="50"
+            placeholder="Affiché à la place de votre email"
+            class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          />
+        </label>
+
+        <label class="mt-4 block text-sm font-medium text-slate-700">
+          Mot de passe
+          <input
+            type="password"
+            name="password"
+            [(ngModel)]="password"
+            required
+            class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          />
+        </label>
+        <p class="mt-1 text-xs" [class.text-red-600]="password && !passwordValid" [class.text-slate-400]="!password || passwordValid">
+          Au moins 8 caractères, une majuscule, une minuscule et un chiffre.
+        </p>
+
+        <label class="mt-4 block text-sm font-medium text-slate-700">
+          Confirmer le mot de passe
+          <input
+            type="password"
+            name="confirmPassword"
+            [(ngModel)]="confirmPassword"
+            required
+            class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          />
+        </label>
+        @if (confirmPassword && !passwordsMatch) {
+          <p class="mt-1 text-xs text-red-600">Les mots de passe ne correspondent pas.</p>
+        }
+
+        @if (error()) {
+          <p class="mt-4 text-sm text-red-600">{{ error() }}</p>
+        }
+
+        <button
+          type="submit"
+          [disabled]="!canSubmit"
+          class="mt-6 w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {{ submitting() ? 'Inscription…' : "S'inscrire" }}
+        </button>
+
+        <a routerLink="/" class="mt-4 block text-center text-sm text-slate-500 hover:underline">
+          Déjà un compte ? Se connecter
+        </a>
+      </form>
+    } @else {
+      <div class="text-center">
+        <h1 class="text-xl font-semibold text-slate-900">Vérifiez votre boîte mail</h1>
+        <p class="mt-2 text-sm text-slate-500">
+          Un email de confirmation a été envoyé à {{ email }}. Cliquez sur le lien qu'il contient pour activer votre compte.
+        </p>
+        <a routerLink="/" class="mt-6 inline-block text-sm text-slate-500 hover:underline">Retour à la connexion</a>
+      </div>
+    }
+  </div>
+</div>

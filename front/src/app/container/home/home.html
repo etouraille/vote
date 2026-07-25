@@ -1,0 +1,116 @@
+<div class="min-h-screen bg-white">
+  <header class="flex items-center justify-end gap-2 px-4 py-3">
+    <a
+      routerLink="/backoffice"
+      class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+    >
+      Backoffice
+    </a>
+    <button (click)="logout()" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700">
+      Se déconnecter
+    </button>
+  </header>
+
+  <section class="mx-auto max-w-sm px-4 pt-6">
+    <form (ngSubmit)="search()" class="flex items-center gap-2">
+      <label class="sr-only" for="search-query">Rechercher</label>
+      <input
+        id="search-query"
+        type="search"
+        name="search"
+        [(ngModel)]="searchQuery"
+        placeholder="Rechercher un texte…"
+        class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+      />
+      <button
+        type="submit"
+        [disabled]="searching()"
+        class="shrink-0 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
+      >
+        {{ searching() ? 'Recherche…' : 'Rechercher' }}
+      </button>
+    </form>
+
+    @if (searchError(); as error) {
+      <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+    }
+
+    @if (searchResults(); as results) {
+      @if (results.length === 0) {
+        <p class="mt-3 text-xs text-slate-400">Aucun texte finalisé ne correspond à cette recherche.</p>
+      } @else {
+        <ul class="mt-3 flex flex-col gap-1.5">
+          @for (result of results; track result.textId) {
+            <li>
+              <button
+                type="button"
+                (click)="openResult(result)"
+                class="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2 text-left text-sm text-slate-900 hover:bg-slate-50"
+              >
+                <span class="truncate">{{ result.title }}</span>
+                <span class="shrink-0 text-xs text-slate-400">{{ result.score | number: '1.0-2' }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </section>
+
+  @if (canCreateText()) {
+    <section class="mx-auto max-w-sm px-4 py-6">
+      <form (ngSubmit)="createText()" class="flex items-center gap-2">
+        <label class="sr-only" for="text-title">Titre</label>
+        <input
+          id="text-title"
+          type="text"
+          name="title"
+          [(ngModel)]="title"
+          required
+          placeholder="Titre du texte"
+          class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+        />
+        <button
+          type="submit"
+          [disabled]="!title.trim()"
+          class="shrink-0 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          Créer
+        </button>
+      </form>
+    </section>
+  }
+
+  @if (recentTexts().length > 0) {
+    <section class="mx-auto max-w-2xl px-4 pb-10">
+      <h2 class="mb-3 text-sm font-medium text-slate-500">Derniers textes</h2>
+      <div class="grid grid-cols-2 gap-4">
+        @for (card of recentTexts(); track card.id) {
+          <div class="group relative h-40 overflow-hidden rounded-lg border border-slate-200 p-4">
+            <h3 class="truncate text-sm font-semibold text-slate-900">{{ card.title }}</h3>
+            <p class="mt-2 line-clamp-5 text-xs text-slate-500">{{ card.excerpt }}</p>
+
+            <div
+              class="absolute inset-0 hidden flex-col items-center justify-center gap-2 bg-white/95 group-hover:flex"
+            >
+              <a
+                [routerLink]="['/editor']"
+                [queryParams]="{ id: card.id }"
+                class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+              >
+                Éditer
+              </a>
+              <a
+                [routerLink]="['/vote']"
+                [queryParams]="{ id: card.id }"
+                class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
+              >
+                Voter
+              </a>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+  }
+</div>

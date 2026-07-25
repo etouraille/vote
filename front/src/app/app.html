@@ -1,0 +1,9 @@
+@if (auth.isAuthenticated() && auth.user(); as user) {
+  <div class="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
+    @if (avatarUrl(); as url) {
+      <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-slate-200" />
+    }
+    <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
+  </div>
+}
+<router-outlet />

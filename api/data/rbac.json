@@ -1,0 +1,28 @@
+[
+  {
+    "id": "d4617b07-d7f6-4b27-9d90-7b32321982c0",
+    "root": true,
+    "permissions": {
+      "canVote": false,
+      "canCreateText": false,
+      "canCloseText": false,
+      "canSelect": false,
+      "canEditSelection": false,
+      "canUpdateText": false
+    },
+    "createdAt": "2026-07-25T10:26:09.97998956+02:00"
+  },
+  {
+    "id": "8cd73f02-c0e2-4bf7-bedf-c78cb58dc598",
+    "root": true,
+    "permissions": {
+      "canVote": false,
+      "canCreateText": false,
+      "canCloseText": false,
+      "canSelect": false,
+      "canEditSelection": false,
+      "canUpdateText": false
+    },
+    "createdAt": "2026-07-25T10:33:56.040228556+02:00"
+  }
+]
