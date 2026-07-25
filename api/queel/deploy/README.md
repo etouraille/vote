@@ -57,6 +57,15 @@ curl -s http://localhost:8091/api/auth/login -H 'Content-Type: application/json'
 curl -s http://localhost:8092/api/texts -H "Authorization: Bearer $TOKEN"
 ```
 
+Each node also answers an unauthenticated `GET /healthz` — Postgres and the
+queel store's reachability, plus how many cluster members it currently
+believes are alive:
+
+```bash
+curl -s http://localhost:8091/healthz
+# {"status":"ok","checks":{"postgres":"ok","queel":"ok"},"clustered":true,"aliveNodes":3}
+```
+
 A text created via node 1 is immediately readable via node 2 and node 3.
 Killing any one node still leaves reads/writes working through the other
 two (quorum = 2 of 3); the killed node catches up automatically via

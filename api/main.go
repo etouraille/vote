@@ -134,6 +134,9 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	// Outside the /api/... prefix on purpose — requireToken only gates that
+	// prefix, so orchestration can probe this without a bearer token.
+	mux.HandleFunc("GET /healthz", healthHandler(db, queelStore, membership))
 	mux.HandleFunc("POST /api/auth/register", registerHandler(store))
 	mux.HandleFunc("POST /api/auth/login", loginHandler(store, rbacStore, []byte(jwtSecret)))
 	mux.HandleFunc("POST /api/auth/confirm", confirmHandler(store))

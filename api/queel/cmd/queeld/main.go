@@ -110,6 +110,11 @@ func main() {
 		}
 	}()
 
+	// Unauthenticated, same as /internal/... — meant for orchestration
+	// (a Kubernetes probe, a load balancer's own health check), not an
+	// end-user client.
+	mux.HandleFunc("GET /healthz", server.HealthHandler(store, membership))
+
 	// QUEEL_JWT_SECRET must match whatever issued the caller's bearer
 	// token (typically this repo's api process — see rbac.SignToken).
 	// Left unset, every mutating route stays unauthenticated, exactly as
