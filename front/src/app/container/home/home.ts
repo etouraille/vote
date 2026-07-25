@@ -34,17 +34,26 @@ export class HomePage implements OnInit {
 
   readonly recentTexts = signal<RecentTextCard[]>([]);
 
-  // Gate the Éditer/Voter links shown on each search result — same rights
-  // that gate the actions themselves once you're on those pages (editor.ts's
-  // canAmendText, vote.ts's canVote), so a result never links to a page
-  // where the user couldn't do anything anyway.
+  // Gate the Éditer/Voter/Clore un round actions shown on each search
+  // result — same rights that gate the actions themselves once you're on
+  // those pages (editor.ts's canAmendText, vote.ts's canVote), so a result
+  // never links to a page (or offers an action) the user couldn't actually
+  // use anyway.
   readonly canAmendText = signal(false);
   readonly canVote = signal(false);
+  readonly canCloseText = signal(false);
+
+  // Per-result close-round state, keyed by textId — a search list can hold
+  // several results at once, each closeable independently.
+  readonly closingTextId = signal<string | null>(null);
+  readonly closedTextIds = signal<ReadonlySet<string>>(new Set());
+  readonly closeErrors = signal<Readonly<Record<string, string>>>({});
 
   ngOnInit(): void {
     this.auth.me().subscribe((me) => {
       this.canAmendText.set(me.root || me.permissions.canSelect || me.permissions.canEditSelection);
       this.canVote.set(me.root || me.permissions.canVote);
+      this.canCloseText.set(me.root || me.permissions.canCloseText);
     });
     this.loadRecentTexts();
   }
@@ -88,5 +97,25 @@ export class HomePage implements OnInit {
   clearSearch(): void {
     this.searchResults.set(null);
     this.searchError.set(null);
+  }
+
+  closeRound(result: SearchResult): void {
+    const textId = result.textId;
+    this.closingTextId.set(textId);
+    this.closeErrors.update(({ [textId]: _dropped, ...rest }) => rest);
+
+    this.textService.closeRound(textId).subscribe({
+      next: () => {
+        this.closingTextId.set(null);
+        this.closedTextIds.update((ids) => new Set(ids).add(textId));
+      },
+      error: (err: HttpErrorResponse) => {
+        this.closingTextId.set(null);
+        this.closeErrors.update((errors) => ({
+          ...errors,
+          [textId]: err.error?.error ?? 'Erreur lors de la clôture du tour',
+        }));
+      },
+    });
   }
 }

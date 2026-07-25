@@ -52,4 +52,8 @@ export class TextService {
   castVote(fragmentId: string): Observable<unknown> {
     return this.http.post(`${API_BASE_URL}/api/fragments/${fragmentId}/vote`, {});
   }
+
+  closeRound(textId: string): Observable<unknown> {
+    return this.http.post(`${API_BASE_URL}/api/texts/${textId}/close-round`, {});
+  }
 }
