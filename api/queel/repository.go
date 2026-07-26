@@ -166,10 +166,11 @@ func (r *Repository) Text(id string) (*Text, error) {
 	return &text, nil
 }
 
-// RecentTexts returns up to limit texts (every version of every text —
-// including versions CloseRound has since superseded, since each fork is
-// its own Text record), most recently created first. limit <= 0 means no
-// cap.
+// RecentTexts returns up to limit texts, most recently created first,
+// skipping any version a round has since superseded (see IsSuperseded) —
+// each fork is its own Text record, so without this a text's whole version
+// history would compete for the same "recent" slots as its current head.
+// limit <= 0 means no cap.
 func (r *Repository) RecentTexts(limit int) ([]*Text, error) {
 	kvs, err := r.store.Scan(textPrefix())
 	if err != nil {
@@ -181,6 +182,13 @@ func (r *Repository) RecentTexts(limit int) ([]*Text, error) {
 		var text Text
 		if err := json.Unmarshal(kv.Value, &text); err != nil {
 			return nil, err
+		}
+		superseded, err := r.IsSuperseded(text.ID)
+		if err != nil {
+			return nil, err
+		}
+		if superseded {
+			continue
 		}
 		texts = append(texts, &text)
 	}

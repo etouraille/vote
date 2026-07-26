@@ -58,6 +58,61 @@ func TestRecentTextsMostRecentFirstAndLimited(t *testing.T) {
 	}
 }
 
+// TestRecentTextsExcludesSupersededVersions proves RecentTexts backfills
+// the limit with older-but-current texts rather than just returning fewer
+// results once a superseded version drops out — the same list a "4 most
+// recent" home page grid asks for should never surface a stale fork just
+// because it happens to sort earlier by CreatedAt.
+func TestRecentTextsExcludesSupersededVersions(t *testing.T) {
+	repo := newTestRepository(t)
+
+	original, err := repo.CreateText("Original", "Nous le peuple francais.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	start, end := runeRange(original.Content, "francais")
+	if _, err := repo.ProposeEdit(original.ID, start, end, "français", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := repo.CloseRound(original.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fork := outcome.Text
+	time.Sleep(time.Millisecond)
+
+	var otherIDs []string
+	for i := 0; i < 3; i++ {
+		text, err := repo.CreateText(fmt.Sprintf("Other %d", i), "content", "creator")
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherIDs = append(otherIDs, text.ID)
+		time.Sleep(time.Millisecond)
+	}
+
+	recent, err := repo.RecentTexts(4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 4 {
+		t.Fatalf("expected the limit backfilled to 4 texts despite one superseded version existing, got %d: %+v", len(recent), recent)
+	}
+	for _, text := range recent {
+		if text.ID == original.ID {
+			t.Fatalf("superseded original text %q must not appear in RecentTexts", original.ID)
+		}
+	}
+	want := []string{otherIDs[2], otherIDs[1], otherIDs[0], fork.ID}
+	for i, text := range recent {
+		if text.ID != want[i] {
+			t.Fatalf("recent[%d].ID = %q, want %q", i, text.ID, want[i])
+		}
+	}
+}
+
 func TestCreateTextHasNoSlotsOrOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 
