@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/etouraille/queel"
+	"github.com/etouraille/queel/cluster"
 )
 
 // defaultScheduledCloseInterval is how often runScheduledCloseWorker checks
@@ -14,6 +15,20 @@ import (
 // whole-day increments, so checking every hour is far more than precise
 // enough while staying cheap.
 const defaultScheduledCloseInterval = time.Hour
+
+// isScheduledCloseLeader reports whether self should run the scheduled
+// close worker right now: the node that sorts first among those membership
+// currently believes are alive (AliveNodes() is already stably sorted).
+// Nodes are otherwise perfectly symmetric — no primary, no leader election
+// — so this simple deterministic rule is enough to ensure exactly one node
+// runs the worker at a time without any coordination between them.
+// Re-evaluating this on every call (rather than deciding once at startup)
+// is what makes it self-healing: the moment the current leader stops being
+// reported alive, the next call promotes whichever node is now first.
+func isScheduledCloseLeader(membership *cluster.Membership, self cluster.Node) bool {
+	alive := membership.AliveNodes()
+	return len(alive) > 0 && alive[0] == self
+}
 
 // runScheduledCloseWorker is the other half of scheduleCloseHandler: it
 // periodically asks queel for every round whose scheduled close date has

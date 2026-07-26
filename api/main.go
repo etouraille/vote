@@ -180,21 +180,14 @@ func main() {
 	// Single-node: nil, this is the only process that could run it anyway.
 	// Clustered: every node runs this same main(), so without this check
 	// every node would redundantly re-scan the same replicated data (and
-	// could race each other to close the same round) on every tick. Nodes
-	// are otherwise perfectly symmetric here — no primary, no leader
-	// election — so rather than stand up real leader election, this just
-	// designates whichever alive node sorts first (AliveNodes() is already
-	// stably sorted) as the one that runs it. Self-healing for free: if
-	// that node dies, the next gossip round's AliveNodes() promotes
-	// whichever node is now first, with no coordination required.
-	var isScheduledCloseLeader func() bool
+	// could race each other to close the same round) on every tick — see
+	// isScheduledCloseLeader's doc comment for why this simple rule is
+	// enough given how symmetric nodes are here.
+	var scheduledCloseLeaderCheck func() bool
 	if clustered {
-		isScheduledCloseLeader = func() bool {
-			alive := membership.AliveNodes()
-			return len(alive) > 0 && alive[0] == self
-		}
+		scheduledCloseLeaderCheck = func() bool { return isScheduledCloseLeader(membership, self) }
 	}
-	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval, isScheduledCloseLeader)
+	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval, scheduledCloseLeaderCheck)
 
 	mux := http.NewServeMux()
 	// Outside the /api/... prefix on purpose — requireToken only gates that
