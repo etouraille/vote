@@ -128,6 +128,45 @@ func TestCreateTextHasNoSlotsOrOpenRound(t *testing.T) {
 	}
 }
 
+// TestCreateTextSubscribesTheAuthor proves an author never gets locked out
+// of their own text's actions by the subscription gate — CreateText must
+// subscribe them to it immediately, not leave that to a separate "click
+// Subscribe" step.
+func TestCreateTextSubscribesTheAuthor(t *testing.T) {
+	repo := newTestRepository(t)
+
+	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscribed, err := repo.IsSubscribed("alice", text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !subscribed {
+		t.Fatal("expected the author to be subscribed to the text they just created")
+	}
+
+	subs, err := repo.SubscriptionsForUser("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subs) != 1 || subs[0] != text.ID {
+		t.Fatalf("SubscriptionsForUser(alice) = %v, want exactly [%q]", subs, text.ID)
+	}
+
+	// A second, unrelated author creating their own text must not be
+	// subscribed to alice's.
+	otherSubscribed, err := repo.IsSubscribed("bob", text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherSubscribed {
+		t.Fatal("bob must not be subscribed to a text alice created")
+	}
+}
+
 func TestUpdateTextOverwritesTitleAndContent(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Brouillon", "Nous, le peuple.", "creator")

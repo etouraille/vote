@@ -151,6 +151,12 @@ func userChoiceKey(textID, slotID, userID string) []byte {
 // CreateText creates a new text from its initial content, attributed to
 // authorID (see Text.CreatedBy). It starts with no slots and no open round;
 // slots only come into existence once someone calls ProposeEdit.
+//
+// authorID is also subscribed to the new text right away (see Subscribe) —
+// otherwise, since subscribing is the only thing that reveals a text's
+// vote/edit/close/delete actions, its own author would be immediately
+// locked out of every action on the text they just created until they
+// separately clicked "Subscribe" on it.
 func (r *Repository) CreateText(title, content, authorID string) (*Text, error) {
 	id, err := newID()
 	if err != nil {
@@ -162,7 +168,18 @@ func (r *Repository) CreateText(title, content, authorID string) (*Text, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := r.store.Put(textKey(id), payload); err != nil {
+
+	sub := &Subscription{UserID: authorID, TextID: id, CreatedAt: text.CreatedAt}
+	subPayload, err := json.Marshal(sub)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.store.WriteBatch([]WriteOp{
+		{Key: textKey(id), Value: payload},
+		{Key: subscriptionKey(id, authorID), Value: subPayload},
+		{Key: subscriptionIndexKey(authorID, id), Value: []byte(id)},
+	}); err != nil {
 		return nil, err
 	}
 	return text, nil
