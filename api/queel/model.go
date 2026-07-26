@@ -79,6 +79,15 @@ type Round struct {
 	Slots     []Slot      `json:"slots"`
 	CreatedAt time.Time   `json:"createdAt"`
 	ClosedAt  *time.Time  `json:"closedAt,omitempty"`
+
+	// ScheduledCloseAt is set when someone chooses to close this round "in N
+	// days" instead of immediately (see Repository.ScheduleRoundClose) — a
+	// background worker (see queel/cmd or the host app's main) periodically
+	// calls Repository.DueScheduledRounds and runs CloseRound for whatever
+	// it returns. Left nil for a round closed directly instead, and never
+	// cleared once set (Status flipping to closed is what stops it from
+	// being "due" again — it stays as a record of what was requested).
+	ScheduledCloseAt *time.Time `json:"scheduledCloseAt,omitempty"`
 }
 
 // Fragment is one candidate piece of content proposed for a given slot.

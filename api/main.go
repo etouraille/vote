@@ -167,6 +167,16 @@ func main() {
 		log.Printf("qdrant collection not ready (search will be degraded until it is): %v", err)
 	}
 
+	scheduledCloseInterval := defaultScheduledCloseInterval
+	if v := os.Getenv("SCHEDULED_CLOSE_CHECK_INTERVAL"); v != "" {
+		parsed, err := time.ParseDuration(v)
+		if err != nil {
+			log.Fatalf("invalid SCHEDULED_CLOSE_CHECK_INTERVAL: %v", err)
+		}
+		scheduledCloseInterval = parsed
+	}
+	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval)
+
 	mux := http.NewServeMux()
 	// Outside the /api/... prefix on purpose — requireToken only gates that
 	// prefix, so orchestration can probe this without a bearer token.
@@ -188,6 +198,7 @@ func main() {
 	mux.HandleFunc("POST /api/texts/{id}/slots", proposeEditHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/{id}/slots/{slotId}/fragments", fragmentsForSlotHandler(textRepo))
 	mux.HandleFunc("POST /api/texts/{id}/close-round", closeRoundHandler(textRepo, searchIndex))
+	mux.HandleFunc("POST /api/texts/{id}/schedule-close", scheduleCloseHandler(textRepo))
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))
 	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo))
 

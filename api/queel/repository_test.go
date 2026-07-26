@@ -511,6 +511,128 @@ func TestCloseRoundNoOpenRound(t *testing.T) {
 	}
 }
 
+func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end := runeRange(content, "francais")
+	if _, err := repo.ProposeEdit(text.ID, start, end, "français", "alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	closeAt := time.Now().Add(7 * 24 * time.Hour)
+	round, err := repo.ScheduleRoundClose(text.ID, closeAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if round.Status != RoundStatusOpen {
+		t.Fatalf("expected the round to stay open, got status %q", round.Status)
+	}
+	if round.ScheduledCloseAt == nil || !round.ScheduledCloseAt.Equal(closeAt) {
+		t.Fatalf("ScheduledCloseAt = %v, want %v", round.ScheduledCloseAt, closeAt)
+	}
+
+	// Still open for proposals — scheduling a future close doesn't freeze
+	// anything early.
+	otherStart, otherEnd := runeRange(content, "declare")
+	if _, err := repo.ProposeEdit(text.ID, otherStart, otherEnd, "proclame", "bob"); err != nil {
+		t.Fatalf("expected the round to still accept proposals, got %v", err)
+	}
+
+	persisted, err := repo.CurrentRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.ScheduledCloseAt == nil || !persisted.ScheduledCloseAt.Equal(closeAt) {
+		t.Fatalf("persisted ScheduledCloseAt = %v, want %v", persisted.ScheduledCloseAt, closeAt)
+	}
+}
+
+func TestScheduleRoundCloseNoOpenRound(t *testing.T) {
+	repo := newTestRepository(t)
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(24*time.Hour)); err != ErrNoOpenRound {
+		t.Fatalf("expected ErrNoOpenRound, got %v", err)
+	}
+}
+
+func TestDueScheduledRounds(t *testing.T) {
+	repo := newTestRepository(t)
+
+	past := time.Now().Add(-time.Hour)
+	future := time.Now().Add(7 * 24 * time.Hour)
+
+	// Due: an open round scheduled to close in the past.
+	dueText, err := repo.CreateText("Due", "Contenu du texte du.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dStart, dEnd := runeRange(dueText.Content, "du")
+	if _, err := repo.ProposeEdit(dueText.ID, dStart, dEnd, "modifie", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ScheduleRoundClose(dueText.ID, past); err != nil {
+		t.Fatal(err)
+	}
+
+	// Not due yet: an open round scheduled far in the future.
+	futureText, err := repo.CreateText("Future", "Contenu futur.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fStart, fEnd := runeRange(futureText.Content, "futur")
+	if _, err := repo.ProposeEdit(futureText.ID, fStart, fEnd, "modifie", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ScheduleRoundClose(futureText.ID, future); err != nil {
+		t.Fatal(err)
+	}
+
+	// Never scheduled: an open round with no ScheduledCloseAt at all.
+	unscheduledText, err := repo.CreateText("Unscheduled", "Contenu normal.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uStart, uEnd := runeRange(unscheduledText.Content, "normal")
+	if _, err := repo.ProposeEdit(unscheduledText.ID, uStart, uEnd, "modifie", "alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Already closed: was scheduled in the past, but someone closed it by
+	// hand before the worker got to it — must not show up as due again.
+	closedText, err := repo.CreateText("Closed", "Contenu clos.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cStart, cEnd := runeRange(closedText.Content, "clos")
+	if _, err := repo.ProposeEdit(closedText.ID, cStart, cEnd, "modifie", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ScheduleRoundClose(closedText.ID, past); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CloseRound(closedText.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	due, err := repo.DueScheduledRounds(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("expected exactly 1 due round, got %d: %+v", len(due), due)
+	}
+	if due[0].TextID != dueText.ID {
+		t.Fatalf("due round TextID = %q, want %q", due[0].TextID, dueText.ID)
+	}
+}
+
 func TestTextWithSlotsNoOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")

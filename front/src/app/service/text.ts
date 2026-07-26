@@ -57,6 +57,10 @@ export class TextService {
     return this.http.post(`${API_BASE_URL}/api/texts/${textId}/close-round`, {});
   }
 
+  scheduleClose(textId: string, days: number): Observable<{ scheduledCloseAt: string }> {
+    return this.http.post<{ scheduledCloseAt: string }>(`${API_BASE_URL}/api/texts/${textId}/schedule-close`, { days });
+  }
+
   deleteText(id: string): Observable<unknown> {
     return this.http.delete(`${API_BASE_URL}/api/texts/${id}`);
   }

@@ -1,4 +1,4 @@
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -19,7 +19,7 @@ export interface RecentTextCard {
 
 @Component({
   selector: 'home-page',
-  imports: [FormsModule, DecimalPipe, RouterLink],
+  imports: [FormsModule, DecimalPipe, DatePipe, RouterLink],
   templateUrl: './home.html',
 })
 export class HomePage implements OnInit {
@@ -53,6 +53,15 @@ export class HomePage implements OnInit {
   readonly closingTextId = signal<string | null>(null);
   readonly closedTextIds = signal<ReadonlySet<string>>(new Set());
   readonly closeErrors = signal<Readonly<Record<string, string>>>({});
+
+  // The "Clore un round" popin: which result it's open for (null = closed),
+  // and the day count bound to its "dans N jours" input.
+  readonly closeRoundPopup = signal<SearchResult | null>(null);
+  closeDays = 7;
+
+  // Set once scheduleClose succeeds, so the row can show when the round is
+  // due to close on its own instead of (or alongside) the manual button.
+  readonly scheduledCloseAt = signal<Readonly<Record<string, string>>>({});
 
   // Per-result delete state, same shape as close-round above.
   readonly deletingTextId = signal<string | null>(null);
@@ -109,7 +118,21 @@ export class HomePage implements OnInit {
     this.searchError.set(null);
   }
 
-  closeRound(result: SearchResult): void {
+  // Opens the "Clore un round" popin for one result instead of closing
+  // immediately — the popin lets the user pick between closing right now or
+  // scheduling the close for N days out.
+  openCloseRoundPopup(result: SearchResult): void {
+    this.closeDays = 7;
+    this.closeRoundPopup.set(result);
+  }
+
+  dismissCloseRoundPopup(): void {
+    this.closeRoundPopup.set(null);
+  }
+
+  confirmCloseNow(result: SearchResult): void {
+    this.dismissCloseRoundPopup();
+
     const textId = result.textId;
     this.closingTextId.set(textId);
     this.closeErrors.update(({ [textId]: _dropped, ...rest }) => rest);
@@ -124,6 +147,29 @@ export class HomePage implements OnInit {
         this.closeErrors.update((errors) => ({
           ...errors,
           [textId]: err.error?.error ?? 'Erreur lors de la clôture du tour',
+        }));
+      },
+    });
+  }
+
+  confirmScheduleClose(result: SearchResult): void {
+    const textId = result.textId;
+    const days = this.closeDays;
+    this.dismissCloseRoundPopup();
+
+    this.closingTextId.set(textId);
+    this.closeErrors.update(({ [textId]: _dropped, ...rest }) => rest);
+
+    this.textService.scheduleClose(textId, days).subscribe({
+      next: ({ scheduledCloseAt }) => {
+        this.closingTextId.set(null);
+        this.scheduledCloseAt.update((dates) => ({ ...dates, [textId]: scheduledCloseAt }));
+      },
+      error: (err: HttpErrorResponse) => {
+        this.closingTextId.set(null);
+        this.closeErrors.update((errors) => ({
+          ...errors,
+          [textId]: err.error?.error ?? 'Erreur lors de la programmation de la clôture',
         }));
       },
     });

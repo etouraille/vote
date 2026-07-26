@@ -92,6 +92,8 @@ func textPrefix() []byte { return []byte("text/") }
 
 func roundKey(id string) []byte { return []byte("round/" + id) }
 
+func roundPrefix() []byte { return []byte("round/") }
+
 func currentRoundKey(textID string) []byte { return []byte("currentround/" + textID) }
 
 // roundCountKey stores how many rounds have ever been opened on textID, as
@@ -240,6 +242,58 @@ func (r *Repository) CurrentRound(textID string) (*Round, error) {
 		return nil, ErrNotFound
 	}
 	return r.Round(string(value))
+}
+
+// ScheduleRoundClose records that the current round on textID should close
+// itself once closeAt has passed — the "close in N days" alternative to
+// calling CloseRound directly. It doesn't touch Status, Slots, or anything
+// else about the round: it stays open (competing for its slots, accepting
+// votes) exactly as before, just with a due date a background worker (see
+// DueScheduledRounds) will eventually act on. Calling this again before
+// that happens overwrites the previous ScheduledCloseAt with the new one.
+func (r *Repository) ScheduleRoundClose(textID string, closeAt time.Time) (*Round, error) {
+	round, err := r.CurrentRound(textID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNoOpenRound
+		}
+		return nil, err
+	}
+
+	round.ScheduledCloseAt = &closeAt
+	payload, err := json.Marshal(round)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.store.Put(roundKey(round.ID), payload); err != nil {
+		return nil, err
+	}
+	return round, nil
+}
+
+// DueScheduledRounds returns every round whose ScheduledCloseAt has passed
+// as of now and hasn't been closed yet — what a periodic background worker
+// should call CloseRound on next. Scans every round ever opened (there is
+// no "open rounds" index to narrow this by), which is fine at the scale
+// queel targets today (see queel/cluster's anti-entropy doc comment for the
+// same tradeoff made there).
+func (r *Repository) DueScheduledRounds(now time.Time) ([]*Round, error) {
+	kvs, err := r.store.Scan(roundPrefix())
+	if err != nil {
+		return nil, err
+	}
+
+	due := make([]*Round, 0)
+	for _, kv := range kvs {
+		var round Round
+		if err := json.Unmarshal(kv.Value, &round); err != nil {
+			return nil, err
+		}
+		if round.Status == RoundStatusOpen && round.ScheduledCloseAt != nil && !now.Before(*round.ScheduledCloseAt) {
+			due = append(due, &round)
+		}
+	}
+	return due, nil
 }
 
 // RoundCount reports how many rounds have ever been opened on textID's

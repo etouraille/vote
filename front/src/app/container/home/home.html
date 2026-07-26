@@ -113,7 +113,7 @@
                       } @else {
                         <button
                           type="button"
-                          (click)="closeRound(result)"
+                          (click)="openCloseRoundPopup(result)"
                           [disabled]="closingTextId() === result.textId"
                           class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
                         >
@@ -133,6 +133,9 @@
                     }
                   </span>
                 </div>
+                @if (scheduledCloseAt()[result.textId]; as date) {
+                  <p class="text-xs text-amber-700">Clôture programmée le {{ date | date: 'dd/MM/yyyy' }}.</p>
+                }
                 @if (closeErrors()[result.textId]; as error) {
                   <p class="text-xs text-red-600">{{ error }}</p>
                 }
@@ -143,6 +146,54 @@
             }
           </ul>
         }
+      </div>
+    }
+
+    @if (closeRoundPopup(); as popupResult) {
+      <div class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+        <div class="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+          <h3 class="text-sm font-semibold text-slate-900">Clore le round de « {{ popupResult.title }} »</h3>
+          <p class="mt-1 text-xs text-slate-500">
+            Clôturer le vote maintenant, ou programmer sa clôture automatique dans quelques jours ?
+          </p>
+
+          <button
+            type="button"
+            (click)="confirmCloseNow(popupResult)"
+            class="mt-4 w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+          >
+            Clore maintenant
+          </button>
+
+          <div class="mt-3 flex items-center gap-2">
+            <label class="text-xs text-slate-600" for="close-days">Dans</label>
+            <input
+              id="close-days"
+              type="number"
+              min="1"
+              max="365"
+              [(ngModel)]="closeDays"
+              class="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+            />
+            <span class="text-xs text-slate-600">jour(s)</span>
+            <button
+              type="button"
+              (click)="confirmScheduleClose(popupResult)"
+              [disabled]="!closeDays || closeDays < 1"
+              class="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+            >
+              Programmer
+            </button>
+          </div>
+
+          <button
+            type="button"
+            (click)="dismissCloseRoundPopup()"
+            class="mt-4 w-full text-center text-xs text-slate-400 hover:text-slate-600"
+          >
+            Annuler
+          </button>
+        </div>
       </div>
     }
   </div>

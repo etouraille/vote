@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 	"unicode/utf8"
 
 	"github.com/etouraille/queel"
@@ -143,6 +144,69 @@ func closeRoundHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 		}
 
 		writeJSON(w, http.StatusOK, outcome)
+	}
+}
+
+// maxScheduleCloseDays bounds how far out a round's close can be scheduled —
+// generous enough for any real deliberation window while keeping a runaway
+// or malicious value from parking a round open indefinitely.
+const maxScheduleCloseDays = 365
+
+type scheduleCloseRequest struct {
+	Days int `json:"days"`
+}
+
+type scheduleCloseResponse struct {
+	ScheduledCloseAt time.Time `json:"scheduledCloseAt"`
+}
+
+// scheduleCloseHandler is the "close in N days" alternative to
+// closeRoundHandler's immediate close: it only records a due date on the
+// current round (see queel.Repository.ScheduleRoundClose) — the round stays
+// open, still accepting proposals and votes, until runScheduledCloseWorker
+// (see main.go) actually calls CloseRound on it once that date arrives.
+// Gated by the same permission as closing outright, since scheduling one is
+// just as consequential — it can't be walked back once the worker picks it
+// up.
+func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requirePermission(w, r, rbac.ActionCloseText) {
+			return
+		}
+
+		textID := r.PathValue("id")
+
+		var req scheduleCloseRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				writeError(w, http.StatusRequestEntityTooLarge, "corps de requête trop volumineux")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "corps de requête invalide")
+			return
+		}
+		if req.Days < 1 || req.Days > maxScheduleCloseDays {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("le nombre de jours doit être compris entre 1 et %d", maxScheduleCloseDays))
+			return
+		}
+
+		closeAt := time.Now().Add(time.Duration(req.Days) * 24 * time.Hour)
+		round, err := repo.ScheduleRoundClose(textID, closeAt)
+		if err != nil {
+			if errors.Is(err, queel.ErrNoOpenRound) {
+				writeError(w, http.StatusConflict, "aucun tour de vote ouvert pour ce texte")
+				return
+			}
+			if errors.Is(err, queel.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "texte introuvable")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		writeJSON(w, http.StatusOK, scheduleCloseResponse{ScheduledCloseAt: *round.ScheduledCloseAt})
 	}
 }
 
