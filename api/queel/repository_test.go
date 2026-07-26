@@ -555,6 +555,95 @@ func TestCloseRoundSplicesWinnersAndPreservesGaps(t *testing.T) {
 	}
 }
 
+// TestCloseRoundMigratesSubscriptionsToTheFork proves subscribers of the
+// pre-round text follow it to the new version CloseRound forks — replaced,
+// not duplicated, so the old (now superseded) text's subscription is gone
+// once the fork exists.
+func TestCloseRoundMigratesSubscriptionsToTheFork(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.Subscribe("alice", text.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("bob", text.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	start, end := runeRange(content, "francais")
+	fragment, err := repo.ProposeEdit(text.ID, start, end, "français", "carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(fragment.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome, err := repo.CloseRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, userID := range []string{"alice", "bob"} {
+		subscribedToFork, err := repo.IsSubscribed(userID, outcome.Text.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !subscribedToFork {
+			t.Fatalf("%s's subscription must carry over to the fork %s", userID, outcome.Text.ID)
+		}
+
+		subscribedToOld, err := repo.IsSubscribed(userID, text.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if subscribedToOld {
+			t.Fatalf("%s's subscription to the superseded original %s must be gone, not duplicated", userID, text.ID)
+		}
+
+		subs, err := repo.SubscriptionsForUser(userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(subs) != 1 || subs[0] != outcome.Text.ID {
+			t.Fatalf("SubscriptionsForUser(%s) = %v, want exactly [%q]", userID, subs, outcome.Text.ID)
+		}
+	}
+}
+
+// TestCloseRoundWithNoSubscribersIsUnaffected makes sure the subscription
+// migration added to CloseRound is a genuine no-op — not just harmless —
+// when nobody had subscribed to the text a round closes on.
+func TestCloseRoundWithNoSubscribersIsUnaffected(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end := runeRange(content, "francais")
+	fragment, err := repo.ProposeEdit(text.ID, start, end, "français", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(fragment.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome, err := repo.CloseRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Text.Content == "" {
+		t.Fatal("sanity check: fork should still have content")
+	}
+}
+
 func TestCloseRoundNoOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")

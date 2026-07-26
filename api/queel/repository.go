@@ -1070,6 +1070,14 @@ func spliceContent(content string, slots []Slot, winners map[string]*Fragment) s
 // votes that produced the fork, are left untouched as a permanent record.
 // The new Text is what any further ProposeEdit calls should target; the old
 // one has no open round any more and none will open on it again.
+//
+// Every subscriber of the old text is carried forward to the fork: a
+// subscription tracks interest in a text's ongoing evolution, not one
+// frozen version of it, so leaving it pointed at the old ID would silently
+// strand it on a version that's now superseded — invisible to search and
+// RecentTexts (see IsSuperseded), and with no round of its own to ever act
+// on again. Each subscriber's old subscription/index pair is replaced by
+// one pointing at the fork rather than left in place alongside it.
 func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 	round, err := r.CurrentRound(textID)
 	if err != nil {
@@ -1133,13 +1141,37 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 	// ErrTextSuperseded) are all independent once the winners are resolved:
 	// one round trip covers all five. The old text itself is never written
 	// to again.
-	if err := r.store.WriteBatch([]WriteOp{
+	ops := []WriteOp{
 		{Key: textKey(newText.ID), Value: newTextPayload},
 		{Key: roundKey(round.ID), Value: roundPayload},
 		{Key: currentRoundKey(textID), Tombstone: true},
 		{Key: roundCountKey(newText.ID), Value: []byte(strconv.Itoa(round.Number))},
 		{Key: supersededByKey(textID), Value: []byte(newText.ID)},
-	}); err != nil {
+	}
+
+	subscriptionPrefix := "subscription/" + textID + "/"
+	subscriberKVs, err := r.store.Scan([]byte(subscriptionPrefix))
+	if err != nil {
+		return nil, err
+	}
+	for _, kv := range subscriberKVs {
+		userID := strings.TrimPrefix(string(kv.Key), subscriptionPrefix)
+
+		migrated := &Subscription{UserID: userID, TextID: newText.ID, CreatedAt: now}
+		migratedPayload, err := json.Marshal(migrated)
+		if err != nil {
+			return nil, err
+		}
+
+		ops = append(ops,
+			WriteOp{Key: kv.Key, Tombstone: true},
+			WriteOp{Key: subscriptionIndexKey(userID, textID), Tombstone: true},
+			WriteOp{Key: subscriptionKey(newText.ID, userID), Value: migratedPayload},
+			WriteOp{Key: subscriptionIndexKey(userID, newText.ID), Value: []byte(newText.ID)},
+		)
+	}
+
+	if err := r.store.WriteBatch(ops); err != nil {
 		return nil, err
 	}
 
