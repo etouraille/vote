@@ -616,6 +616,86 @@ func TestIsSupersededAfterCloseRound(t *testing.T) {
 	}
 }
 
+func TestIsSubscribedFalseUntilSubscribed(t *testing.T) {
+	repo := newTestRepository(t)
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscribed, err := repo.IsSubscribed("alice", text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subscribed {
+		t.Fatal("expected alice not to be subscribed before ever calling Subscribe")
+	}
+
+	if _, err := repo.Subscribe("alice", text.ID); err != nil {
+		t.Fatal(err)
+	}
+	subscribed, err = repo.IsSubscribed("alice", text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !subscribed {
+		t.Fatal("expected alice to be subscribed after calling Subscribe")
+	}
+
+	// A different user's subscription (or lack of one) is independent.
+	bobSubscribed, err := repo.IsSubscribed("bob", text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bobSubscribed {
+		t.Fatal("bob subscribing was never requested, must not be reported subscribed")
+	}
+}
+
+func TestSubscribeUnknownText(t *testing.T) {
+	repo := newTestRepository(t)
+	if _, err := repo.Subscribe("alice", "does-not-exist"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestSubscriptionsForUserListsSubscribedTexts(t *testing.T) {
+	repo := newTestRepository(t)
+
+	var ids []string
+	for i := 0; i < 3; i++ {
+		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, text.ID)
+	}
+
+	if _, err := repo.Subscribe("alice", ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("alice", ids[2]); err != nil {
+		t.Fatal(err)
+	}
+	// ids[1] is never subscribed to, and bob's own subscription must not
+	// leak into alice's list.
+	if _, err := repo.Subscribe("bob", ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	subscribed, err := repo.SubscriptionsForUser("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, id := range subscribed {
+		got[id] = true
+	}
+	if len(got) != 2 || !got[ids[0]] || !got[ids[2]] {
+		t.Fatalf("SubscriptionsForUser(alice) = %v, want exactly %v", subscribed, []string{ids[0], ids[2]})
+	}
+}
+
 func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."

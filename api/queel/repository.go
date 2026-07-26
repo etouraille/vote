@@ -118,6 +118,24 @@ func fragmentIndexPrefix(textID, slotID string) []byte {
 	return []byte(fmt.Sprintf("fragmentindex/%s/%s/", textID, slotID))
 }
 
+// subscriptionKey is the primary record: does userID follow textID. Stored
+// alongside subscriptionIndexKey below under a different key namespace, the
+// same double-storage fragment/fragmentindex already uses — one for the
+// direct "is this user subscribed to this text" check, one for "list every
+// text this user is subscribed to" as a cheap prefix Scan instead of a full
+// scan of every subscription ever made.
+func subscriptionKey(textID, userID string) []byte {
+	return []byte(fmt.Sprintf("subscription/%s/%s", textID, userID))
+}
+
+func subscriptionIndexKey(userID, textID string) []byte {
+	return []byte(fmt.Sprintf("subscriptionindex/%s/%s", userID, textID))
+}
+
+func subscriptionIndexPrefix(userID string) []byte {
+	return []byte(fmt.Sprintf("subscriptionindex/%s/", userID))
+}
+
 func voteKey(fragmentID, userID string) []byte {
 	return []byte(fmt.Sprintf("vote/%s/%s", fragmentID, userID))
 }
@@ -338,6 +356,51 @@ func (r *Repository) IsSuperseded(textID string) (bool, error) {
 		return false, err
 	}
 	return found, nil
+}
+
+// Subscribe records that userID wants to follow textID — see IsSubscribed
+// and SubscriptionsForUser. Idempotent: subscribing again just refreshes
+// CreatedAt. Fails with ErrNotFound rather than silently subscribing to a
+// text that doesn't exist.
+func (r *Repository) Subscribe(userID, textID string) (*Subscription, error) {
+	if _, err := r.Text(textID); err != nil {
+		return nil, err
+	}
+
+	sub := &Subscription{UserID: userID, TextID: textID, CreatedAt: time.Now()}
+	payload, err := json.Marshal(sub)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.store.WriteBatch([]WriteOp{
+		{Key: subscriptionKey(textID, userID), Value: payload},
+		{Key: subscriptionIndexKey(userID, textID), Value: []byte(textID)},
+	}); err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
+// IsSubscribed reports whether userID currently follows textID.
+func (r *Repository) IsSubscribed(userID, textID string) (bool, error) {
+	_, found, err := r.store.Get(subscriptionKey(textID, userID))
+	if err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+// SubscriptionsForUser lists the ID of every text userID currently follows.
+func (r *Repository) SubscriptionsForUser(userID string) ([]string, error) {
+	kvs, err := r.store.Scan(subscriptionIndexPrefix(userID))
+	if err != nil {
+		return nil, err
+	}
+	textIDs := make([]string, 0, len(kvs))
+	for _, kv := range kvs {
+		textIDs = append(textIDs, string(kv.Value))
+	}
+	return textIDs, nil
 }
 
 // TextWithSlots fetches a text together with the slots of its current

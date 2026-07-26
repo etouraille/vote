@@ -89,7 +89,17 @@
                   </span>
                   <span class="flex shrink-0 items-center gap-2">
                     <span class="text-xs text-slate-400">{{ result.score | number: '1.0-2' }}</span>
-                    @if (canAmendText()) {
+                    @if (!result.subscribed) {
+                      <button
+                        type="button"
+                        (click)="subscribe(result)"
+                        [disabled]="subscribingTextId() === result.textId"
+                        class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+                      >
+                        {{ subscribingTextId() === result.textId ? 'Abonnement…' : "S'abonner" }}
+                      </button>
+                    }
+                    @if (canAmendText() && result.subscribed) {
                       <a
                         [routerLink]="['/editor']"
                         [queryParams]="{ id: result.textId }"
@@ -98,7 +108,7 @@
                         Éditer
                       </a>
                     }
-                    @if (canVote()) {
+                    @if (canVote() && result.subscribed) {
                       <a
                         [routerLink]="['/vote']"
                         [queryParams]="{ id: result.textId }"
@@ -107,7 +117,7 @@
                         Voter
                       </a>
                     }
-                    @if (canCloseText()) {
+                    @if (canCloseText() && result.subscribed) {
                       @if (closedTextIds().has(result.textId)) {
                         <span class="text-xs text-emerald-600">Round clos</span>
                       } @else {
@@ -121,7 +131,7 @@
                         </button>
                       }
                     }
-                    @if (canDeleteText()) {
+                    @if (canDeleteText() && result.subscribed) {
                       <button
                         type="button"
                         (click)="deleteText(result)"
@@ -135,6 +145,9 @@
                 </div>
                 @if (scheduledCloseAt()[result.textId]; as date) {
                   <p class="text-xs text-amber-700">Clôture programmée le {{ date | date: 'dd/MM/yyyy' }}.</p>
+                }
+                @if (subscribeErrors()[result.textId]; as error) {
+                  <p class="text-xs text-red-600">{{ error }}</p>
                 }
                 @if (closeErrors()[result.textId]; as error) {
                   <p class="text-xs text-red-600">{{ error }}</p>

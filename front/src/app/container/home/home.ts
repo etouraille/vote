@@ -38,7 +38,9 @@ export class HomePage implements OnInit {
   // result — same rights that gate the actions themselves once you're on
   // those pages (editor.ts's canAmendText, vote.ts's canVote), so a result
   // never links to a page (or offers an action) the user couldn't actually
-  // use anyway.
+  // use anyway. On top of the permission, each of these also requires
+  // result.subscribed (see subscribe() below) — a text only surfaces its
+  // action buttons once the user has chosen to follow it.
   readonly canAmendText = signal(false);
   readonly canVote = signal(false);
   readonly canCloseText = signal(false);
@@ -47,6 +49,10 @@ export class HomePage implements OnInit {
   // bar (see api's deleteTextHandler) — whoever can create texts can also
   // remove one from here, rather than a dedicated permission bit.
   readonly canDeleteText = signal(false);
+
+  // Per-result subscribe state, same shape as close-round/delete above.
+  readonly subscribingTextId = signal<string | null>(null);
+  readonly subscribeErrors = signal<Readonly<Record<string, string>>>({});
 
   // Per-result close-round state, keyed by textId — a search list can hold
   // several results at once, each closeable independently.
@@ -170,6 +176,32 @@ export class HomePage implements OnInit {
         this.closeErrors.update((errors) => ({
           ...errors,
           [textId]: err.error?.error ?? 'Erreur lors de la programmation de la clôture',
+        }));
+      },
+    });
+  }
+
+  // Subscribing is what reveals the Voter/Éditer/Clore un round/Supprimer
+  // buttons for this result (see the template's [subscribed] checks) —
+  // updating searchResults() in place is what makes them appear right
+  // away, without re-running the search.
+  subscribe(result: SearchResult): void {
+    const textId = result.textId;
+    this.subscribingTextId.set(textId);
+    this.subscribeErrors.update(({ [textId]: _dropped, ...rest }) => rest);
+
+    this.textService.subscribe(textId).subscribe({
+      next: () => {
+        this.subscribingTextId.set(null);
+        this.searchResults.update(
+          (results) => results?.map((r) => (r.textId === textId ? { ...r, subscribed: true } : r)) ?? null,
+        );
+      },
+      error: (err: HttpErrorResponse) => {
+        this.subscribingTextId.set(null);
+        this.subscribeErrors.update((errors) => ({
+          ...errors,
+          [textId]: err.error?.error ?? "Erreur lors de l'abonnement",
         }));
       },
     });

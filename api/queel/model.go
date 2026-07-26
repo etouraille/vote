@@ -139,3 +139,14 @@ type RoundOutcome struct {
 	Text  *Text        `json:"text"`
 	Slots []SlotResult `json:"slots"`
 }
+
+// Subscription records that a user wants to follow a text (see
+// Repository.Subscribe) — purely a personal "focus" signal the front end
+// uses to decide which vote/edit/close/delete actions to surface for a
+// given text. It grants no rights of its own: every action it gates still
+// enforces its own rbac permission independently, subscribed or not.
+type Subscription struct {
+	UserID    string    `json:"userId"`
+	TextID    string    `json:"textId"`
+	CreatedAt time.Time `json:"createdAt"`
+}

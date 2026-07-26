@@ -228,8 +228,19 @@ func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
 // that removal is best-effort at index time. Filtering here instead means
 // the search bar only ever shows the current head of each version chain
 // regardless of that setting or whether a prune attempt happened to fail.
+//
+// Subscribed reports whether the caller themselves follows that text (see
+// queel.Repository.Subscribe) — the front end uses it to decide which of
+// the vote/edit/close/delete buttons to show for that result, so this
+// looks up the caller's own claims rather than anything the query carries.
 func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
+
 		q := r.URL.Query().Get("q")
 		if len(q) == 0 {
 			writeError(w, http.StatusBadRequest, "le paramètre de recherche q est obligatoire")
@@ -260,6 +271,14 @@ func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.Handl
 				return
 			}
 			result.RoundNumber = count
+
+			subscribed, err := repo.IsSubscribed(claims.Subject, result.TextID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "erreur serveur")
+				return
+			}
+			result.Subscribed = subscribed
+
 			current = append(current, result)
 		}
 

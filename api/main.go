@@ -211,6 +211,7 @@ func main() {
 	mux.HandleFunc("GET /api/texts/{id}/slots/{slotId}/fragments", fragmentsForSlotHandler(textRepo))
 	mux.HandleFunc("POST /api/texts/{id}/close-round", closeRoundHandler(textRepo, searchIndex))
 	mux.HandleFunc("POST /api/texts/{id}/schedule-close", scheduleCloseHandler(textRepo))
+	mux.HandleFunc("POST /api/texts/{id}/subscribe", subscribeHandler(textRepo))
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))
 	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo))
 

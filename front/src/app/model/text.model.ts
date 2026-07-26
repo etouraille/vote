@@ -16,6 +16,9 @@ export interface SearchResult {
   score: number;
   // 0 means no round is currently open on this text.
   roundNumber: number;
+  // Whether the current user follows this text — gates whether the
+  // vote/edit/close/delete actions are shown for it (see home.ts).
+  subscribed: boolean;
 }
 
 export interface Fragment {

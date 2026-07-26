@@ -64,4 +64,8 @@ export class TextService {
   deleteText(id: string): Observable<unknown> {
     return this.http.delete(`${API_BASE_URL}/api/texts/${id}`);
   }
+
+  subscribe(textId: string): Observable<{ subscribed: boolean }> {
+    return this.http.post<{ subscribed: boolean }>(`${API_BASE_URL}/api/texts/${textId}/subscribe`, {});
+  }
 }
