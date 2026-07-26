@@ -33,6 +33,15 @@
 // Merkle tree and repairs whatever differs — catching data a peer missed
 // during a partition or disk loss that nobody happens to read again, which
 // quorum reads' read-repair alone never would.
+//
+// Before deliberately taking a clustered node out of service, POST to its
+// internal /internal/decommission first (see cluster.Decommission): it
+// hands off, to whichever nodes will inherit responsibility for them, every
+// key this node holds that the *other* nodes don't already have an
+// equally-or-more-recent copy of. Only stop the process afterward — doing
+// that first means the cluster never dips below its replication factor
+// even briefly, unlike an unplanned crash, which leans on the anti-entropy
+// job above to notice and repair after the fact instead.
 package main
 
 import (
@@ -73,7 +82,20 @@ func main() {
 		log.Fatal(err)
 	}
 	if clustered {
+		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
+		replicationFactor, err := bootstrap.ReplicationFactorFromEnv()
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		mux.HandleFunc("POST /internal/gossip", server.GossipHandler(membership))
+
+		// A proactive, operator-triggered handoff of this node's data to
+		// whichever nodes will inherit it, run before actually stopping
+		// this process — see cluster.Decommission's doc comment for why
+		// that's a meaningfully different (and better) guarantee than
+		// waiting for the anti-entropy job below to notice on its own.
+		mux.HandleFunc("POST /internal/decommission", server.DecommissionHandler(engine, membership, self, replicationFactor))
 
 		// See queel/cluster.RunAntiEntropy's doc comment: catches whatever
 		// read-repair alone misses, by periodically comparing this node's
@@ -83,7 +105,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
 		go cluster.RunAntiEntropy(context.Background(), engine, membership, self, antiEntropyInterval, cluster.DefaultAntiEntropyBuckets)
 
 		store = cluster.NewDistributedStore(coordinator)

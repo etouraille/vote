@@ -62,7 +62,12 @@ func main() {
 		log.Fatalf("joining queel cluster: %v", err)
 	}
 	if clustered {
-		serveInternalReplication(queelEngine, membership)
+		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
+		replicationFactor, err := bootstrap.ReplicationFactorFromEnv()
+		if err != nil {
+			log.Fatalf("replication factor: %v", err)
+		}
+		serveInternalReplication(queelEngine, membership, self, replicationFactor)
 
 		// Read-repair (inside Coordinator.Get) only fixes a key once
 		// something requests it again; a key nobody happens to re-read
@@ -77,7 +82,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("anti-entropy: %v", err)
 		}
-		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
 		go cluster.RunAntiEntropy(context.Background(), queelEngine, membership, self, antiEntropyInterval, cluster.DefaultAntiEntropyBuckets)
 
 		queelStore = cluster.NewDistributedStore(coordinator)
@@ -194,10 +198,11 @@ func main() {
 // cluster nodes on a trusted network, never for end-user traffic. Sharing
 // the public port would let anyone who can reach it bypass every rbac check
 // in this file and manipulate queel's storage directly.
-func serveInternalReplication(engine *queel.Engine, membership *cluster.Membership) {
+func serveInternalReplication(engine *queel.Engine, membership *cluster.Membership, self cluster.Node, replicationFactor int) {
 	internalMux := http.NewServeMux()
 	internalMux.Handle("/internal/", server.NewInternalHandler(engine))
 	internalMux.HandleFunc("POST /internal/gossip", server.GossipHandler(membership))
+	internalMux.HandleFunc("POST /internal/decommission", server.DecommissionHandler(engine, membership, self, replicationFactor))
 
 	internalPort := os.Getenv("QUEEL_INTERNAL_PORT")
 	if internalPort == "" {

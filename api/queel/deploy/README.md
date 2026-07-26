@@ -82,6 +82,51 @@ Merkle tree, whether or not anyone ever reads those keys again. Wipe a
 node's data dir entirely (`rm -rf node3`) and restart it — it recovers its
 full keyspace from peers within `QUEEL_ANTI_ENTROPY_INTERVAL` on its own.
 
+## Decommissioning a node cleanly
+
+Killing a node outright works (that's what the paragraph above is about),
+but it leaves a window — up to `QUEEL_ANTI_ENTROPY_INTERVAL` — where the
+cluster runs under-replicated before anti-entropy notices and repairs it.
+When a node's departure is planned (scaling down, replacing an instance),
+avoid that window instead: `POST` to its *internal* port before stopping
+it, so its data is handed off first.
+
+```bash
+curl -s -X POST http://localhost:9193/internal/decommission
+# {"handedOff":4}
+```
+
+This walks every key node 3 holds locally and pushes it to whichever
+node(s) will be responsible for it once node 3 is gone (its future replica
+set, computed the same way the ring always is — see `cluster.Decommission`),
+skipping anything a target already has an equal-or-newer copy of. Only
+*after* this returns should you actually stop the process — membership then
+detects the departure exactly as it would an unplanned crash, but the
+cluster never dipped below its replication factor in between.
+
+### Triggering it automatically
+
+The `curl` above is manual — it only protects a departure if whoever stops
+the node remembers to run it first. A node can't predict a `SIGKILL`, a
+crash, or a power loss (nothing can be caught, so anti-entropy stays the
+only safety net for those), but it *can* catch its own graceful shutdown:
+`docker stop`, `kubectl delete pod`, and `systemctl stop` all send
+`SIGTERM` before escalating to `SIGKILL`, so a node that traps `SIGTERM`
+can decommission itself in the moment it's asked to stop, instead of
+depending on the operator to call the endpoint above first.
+
+That's what `cluster.DecommissionOnShutdown` does: registered once in
+clustered mode, it blocks on `SIGTERM`/`SIGINT` in the background and,
+the moment one arrives, runs the exact same handoff as the manual `curl`
+against this node's own engine, then exits. It's bounded by
+`QUEEL_DECOMMISSION_TIMEOUT` (default 25s, just under Kubernetes'
+default 30s `terminationGracePeriodSeconds`) — if the handoff hasn't
+finished by then, it gives up and exits anyway rather than risk being
+`SIGKILL`ed mid-handoff, which would leave whatever wasn't handed off yet
+to anti-entropy exactly as an unplanned crash would. The internal
+`/internal/decommission` endpoint is still there for anyone who wants to
+trigger it ahead of time by hand instead.
+
 ## Cleaning up
 
 `node1/`, `node2/`, `node3/` (local engine data) and `rbac.db` (plus its

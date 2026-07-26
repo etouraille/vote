@@ -179,3 +179,22 @@ func AntiEntropyIntervalFromEnv() (time.Duration, error) {
 	}
 	return parsed, nil
 }
+
+// ReplicationFactorFromEnv reads EnvReplicationFactor the same way Join
+// does internally, defaulting to DefaultReplicationFactor if unset. Exposed
+// separately because JoinFromEnv doesn't hand its parsed Config back to the
+// caller — a caller that needs the replication factor for something Join
+// itself doesn't do (server.DecommissionHandler, e.g., which must build a
+// Ring with the exact same factor the cluster is already using) reads it
+// again through this instead of duplicating EnvReplicationFactor's parsing.
+func ReplicationFactorFromEnv() (int, error) {
+	v := os.Getenv(EnvReplicationFactor)
+	if v == "" {
+		return DefaultReplicationFactor, nil
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", EnvReplicationFactor, err)
+	}
+	return parsed, nil
+}
