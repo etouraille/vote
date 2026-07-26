@@ -37,7 +37,7 @@
         [class.pointer-events-none]="searchResults()"
       >
         <h2 class="mb-3 text-sm font-medium text-slate-500">Derniers textes</h2>
-        <div class="max-h-[26rem] overflow-y-auto pr-1">
+        <div class="max-h-[26rem] overflow-y-auto pr-1" (scroll)="onRecentTextsScroll($event)">
           <div class="grid grid-cols-2 gap-4">
           @for (card of recentTexts(); track card.textId) {
             <div class="group relative h-40 overflow-hidden rounded-lg border border-slate-200 p-4">
@@ -104,6 +104,9 @@
             </div>
           }
           </div>
+          @if (loadingMoreRecentTexts()) {
+            <p class="py-3 text-center text-xs text-slate-400">Chargement…</p>
+          }
         </div>
       </section>
     }

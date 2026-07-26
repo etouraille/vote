@@ -201,12 +201,15 @@ func (r *Repository) Text(id string) (*Text, error) {
 	return &text, nil
 }
 
-// RecentTexts returns up to limit texts, most recently created first,
-// skipping any version a round has since superseded (see IsSuperseded) —
-// each fork is its own Text record, so without this a text's whole version
-// history would compete for the same "recent" slots as its current head.
-// limit <= 0 means no cap.
-func (r *Repository) RecentTexts(limit int) ([]*Text, error) {
+// RecentTexts returns up to limit texts starting after the first offset of
+// them, most recently created first, skipping any version a round has
+// since superseded (see IsSuperseded) — each fork is its own Text record,
+// so without this a text's whole version history would compete for the
+// same "recent" slots as its current head. limit <= 0 means no cap;
+// offset <= 0 starts from the very beginning. Together they back the home
+// page's infinite scroll: each page asks for the next `limit` texts after
+// however many it's already loaded, rather than one fixed batch.
+func (r *Repository) RecentTexts(limit, offset int) ([]*Text, error) {
 	kvs, err := r.store.Scan(textPrefix())
 	if err != nil {
 		return nil, err
@@ -229,6 +232,13 @@ func (r *Repository) RecentTexts(limit int) ([]*Text, error) {
 	}
 
 	sort.Slice(texts, func(i, j int) bool { return texts[i].CreatedAt.After(texts[j].CreatedAt) })
+
+	if offset > 0 {
+		if offset >= len(texts) {
+			return []*Text{}, nil
+		}
+		texts = texts[offset:]
+	}
 	if limit > 0 && len(texts) > limit {
 		texts = texts[:limit]
 	}

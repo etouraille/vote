@@ -111,12 +111,23 @@ func (c *Client) CreateText(ctx context.Context, title, content, authorID string
 	return &text, nil
 }
 
-// RecentTexts fetches up to limit texts, most recently created first.
-// limit <= 0 lets the server apply its own default.
-func (c *Client) RecentTexts(ctx context.Context, limit int) ([]*queel.Text, error) {
+// RecentTexts fetches up to limit texts starting after the first offset of
+// them, most recently created first. limit <= 0 lets the server apply its
+// own default; offset <= 0 starts from the beginning.
+func (c *Client) RecentTexts(ctx context.Context, limit, offset int) ([]*queel.Text, error) {
 	path := "/texts"
+	query := ""
 	if limit > 0 {
-		path += "?limit=" + strconv.Itoa(limit)
+		query += "limit=" + strconv.Itoa(limit)
+	}
+	if offset > 0 {
+		if query != "" {
+			query += "&"
+		}
+		query += "offset=" + strconv.Itoa(offset)
+	}
+	if query != "" {
+		path += "?" + query
 	}
 	var texts []*queel.Text
 	if err := c.do(ctx, http.MethodGet, path, nil, &texts); err != nil {

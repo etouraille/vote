@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { SearchResult } from '../../model/text.model';
+import { RecentText, SearchResult } from '../../model/text.model';
 import { AuthService } from '../../service/auth';
 import { TextService } from '../../service/text';
 import { firstWords } from '../../util/words';
@@ -47,6 +47,13 @@ export class HomePage implements OnInit {
   readonly searchError = signal<string | null>(null);
 
   readonly recentTexts = signal<RecentTextCard[]>([]);
+
+  // Infinite scroll for the "Derniers textes" grid: hasMore is false once a
+  // page comes back shorter than requested (including empty) — the signal
+  // that there's nothing further to fetch. loadingMore guards against
+  // firing several requests from rapid-fire scroll events for the same page.
+  readonly loadingMoreRecentTexts = signal(false);
+  readonly hasMoreRecentTexts = signal(true);
 
   // Gate the Éditer/Voter/Clore un round actions shown on each search
   // result — same rights that gate the actions themselves once you're on
@@ -97,17 +104,50 @@ export class HomePage implements OnInit {
     this.loadRecentTexts();
   }
 
+  private toCard(text: RecentText): RecentTextCard {
+    return {
+      textId: text.id,
+      title: text.title,
+      excerpt: firstWords(text.content, 0, EXCERPT_WORD_COUNT),
+      subscribed: text.subscribed,
+    };
+  }
+
   private loadRecentTexts(): void {
-    this.textService.listRecent(RECENT_TEXTS_COUNT).subscribe((texts) => {
-      this.recentTexts.set(
-        texts.map((text) => ({
-          textId: text.id,
-          title: text.title,
-          excerpt: firstWords(text.content, 0, EXCERPT_WORD_COUNT),
-          subscribed: text.subscribed,
-        })),
-      );
+    this.hasMoreRecentTexts.set(true);
+    this.textService.listRecent(RECENT_TEXTS_COUNT, 0).subscribe((texts) => {
+      this.recentTexts.set(texts.map((text) => this.toCard(text)));
+      this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);
     });
+  }
+
+  // Fetches the next page, offset by how many cards are already loaded —
+  // called from home.html's (scroll) handler once the fixed-height grid
+  // nears its bottom.
+  loadMoreRecentTexts(): void {
+    if (this.loadingMoreRecentTexts() || !this.hasMoreRecentTexts()) return;
+
+    this.loadingMoreRecentTexts.set(true);
+    const offset = this.recentTexts().length;
+    this.textService.listRecent(RECENT_TEXTS_COUNT, offset).subscribe({
+      next: (texts) => {
+        this.loadingMoreRecentTexts.set(false);
+        this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);
+        this.recentTexts.update((cards) => [...cards, ...texts.map((text) => this.toCard(text))]);
+      },
+      error: () => {
+        this.loadingMoreRecentTexts.set(false);
+      },
+    });
+  }
+
+  // Triggers loadMoreRecentTexts once the grid's own scrollable container
+  // (not the page) is scrolled within 100px of its bottom.
+  onRecentTextsScroll(event: Event): void {
+    const el = event.target as HTMLElement;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+      this.loadMoreRecentTexts();
+    }
   }
 
   search(): void {

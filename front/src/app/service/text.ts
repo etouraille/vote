@@ -17,9 +17,10 @@ export class TextService {
   }
 
   // The most recently created texts, newest first — for the home page's
-  // "latest texts" cards.
-  listRecent(limit: number): Observable<RecentText[]> {
-    return this.http.get<RecentText[]>(`${API_BASE_URL}/api/texts`, { params: { limit } });
+  // "latest texts" cards. offset paginates for infinite scroll: each call
+  // asks for the next `limit` texts after however many are already loaded.
+  listRecent(limit: number, offset = 0): Observable<RecentText[]> {
+    return this.http.get<RecentText[]>(`${API_BASE_URL}/api/texts`, { params: { limit, offset } });
   }
 
   // Text + the slots of its current round, if any — one call instead of

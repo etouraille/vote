@@ -140,7 +140,17 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 			limit = maxRecentTextsLimit
 		}
 
-		texts, err := repo.RecentTexts(limit)
+		offset := 0
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed < 0 {
+				writeError(w, http.StatusBadRequest, "offset invalide")
+				return
+			}
+			offset = parsed
+		}
+
+		texts, err := repo.RecentTexts(limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return

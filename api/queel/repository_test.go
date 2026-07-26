@@ -43,7 +43,7 @@ func TestRecentTextsMostRecentFirstAndLimited(t *testing.T) {
 		time.Sleep(time.Millisecond) // force distinct, increasing CreatedAt
 	}
 
-	recent, err := repo.RecentTexts(4)
+	recent, err := repo.RecentTexts(4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +55,69 @@ func TestRecentTextsMostRecentFirstAndLimited(t *testing.T) {
 		if text.ID != want[i] {
 			t.Fatalf("recent[%d].ID = %q, want %q", i, text.ID, want[i])
 		}
+	}
+}
+
+// TestRecentTextsOffsetPaginates backs the home page's infinite scroll:
+// fetching page after page with an increasing offset must walk through
+// every text exactly once, in the same order a single unpaged call would
+// return them, with no gaps or repeats at the page boundaries.
+func TestRecentTextsOffsetPaginates(t *testing.T) {
+	repo := newTestRepository(t)
+
+	var ids []string
+	for i := 0; i < 6; i++ {
+		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, text.ID)
+		time.Sleep(time.Millisecond)
+	}
+	want := []string{ids[5], ids[4], ids[3], ids[2], ids[1], ids[0]}
+
+	page1, err := repo.RecentTexts(4, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page2, err := repo.RecentTexts(4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []string
+	for _, text := range page1 {
+		got = append(got, text.ID)
+	}
+	for _, text := range page2 {
+		got = append(got, text.ID)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d texts across both pages, want %d: %v", len(got), len(want), got)
+	}
+	for i, id := range got {
+		if id != want[i] {
+			t.Fatalf("text[%d] = %q, want %q (got %v)", i, id, want[i], got)
+		}
+	}
+}
+
+// TestRecentTextsOffsetPastTheEndIsEmpty makes sure paginating past the
+// last text stops cleanly instead of erroring — the infinite-scroll front
+// end uses an empty page as its "nothing more to load" signal.
+func TestRecentTextsOffsetPastTheEndIsEmpty(t *testing.T) {
+	repo := newTestRepository(t)
+	if _, err := repo.CreateText("Only one", "content", "creator"); err != nil {
+		t.Fatal(err)
+	}
+
+	texts, err := repo.RecentTexts(4, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 0 {
+		t.Fatalf("expected an empty page past the end, got %d texts", len(texts))
 	}
 }
 
@@ -93,7 +156,7 @@ func TestRecentTextsExcludesSupersededVersions(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	recent, err := repo.RecentTexts(4)
+	recent, err := repo.RecentTexts(4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
