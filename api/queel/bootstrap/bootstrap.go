@@ -30,6 +30,14 @@ const (
 	EnvSeedNode          = "QUEEL_SEED_NODE"
 	EnvReplicationFactor = "QUEEL_REPLICATION_FACTOR"
 	EnvGossipInterval    = "QUEEL_GOSSIP_INTERVAL"
+
+	// EnvAntiEntropyInterval is read by AntiEntropyIntervalFromEnv, not by
+	// ConfigFromEnv/Join — starting the background anti-entropy job itself
+	// (see queel/cluster.RunAntiEntropy) needs a *queel.Engine, which this
+	// package deliberately has no notion of (same reasoning as not mounting
+	// HTTP routes itself — see the package doc). Callers read this value
+	// with AntiEntropyIntervalFromEnv and start that job on their own.
+	EnvAntiEntropyInterval = "QUEEL_ANTI_ENTROPY_INTERVAL"
 )
 
 // DefaultReplicationFactor and DefaultGossipInterval apply whenever a
@@ -154,4 +162,20 @@ func JoinFromEnv(ctx context.Context) (coordinator *cluster.Coordinator, members
 	}
 	coordinator, membership, err = Join(ctx, cfg)
 	return coordinator, membership, enabled, err
+}
+
+// AntiEntropyIntervalFromEnv reads EnvAntiEntropyInterval, defaulting to
+// cluster.DefaultAntiEntropyInterval if unset. Only meaningful once a
+// caller has already started cluster.RunAntiEntropy — see this constant's
+// own doc comment for why that's the caller's job, not this package's.
+func AntiEntropyIntervalFromEnv() (time.Duration, error) {
+	v := os.Getenv(EnvAntiEntropyInterval)
+	if v == "" {
+		return cluster.DefaultAntiEntropyInterval, nil
+	}
+	parsed, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", EnvAntiEntropyInterval, err)
+	}
+	return parsed, nil
 }

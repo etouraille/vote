@@ -63,6 +63,23 @@ func main() {
 	}
 	if clustered {
 		serveInternalReplication(queelEngine, membership)
+
+		// Read-repair (inside Coordinator.Get) only fixes a key once
+		// something requests it again; a key nobody happens to re-read
+		// after this node missed a write stays silently under-replicated
+		// forever otherwise. This background job catches that: it
+		// periodically compares this node's entire keyspace against a
+		// random peer's via a Merkle tree (see queel/merkle,
+		// cluster.BuildTree) — cheap to compare because only the branches
+		// that actually diverge cost anything — and repairs whatever
+		// differs.
+		antiEntropyInterval, err := bootstrap.AntiEntropyIntervalFromEnv()
+		if err != nil {
+			log.Fatalf("anti-entropy: %v", err)
+		}
+		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
+		go cluster.RunAntiEntropy(context.Background(), queelEngine, membership, self, antiEntropyInterval, cluster.DefaultAntiEntropyBuckets)
+
 		queelStore = cluster.NewDistributedStore(coordinator)
 	}
 	textRepo := queel.NewRepository(queelStore)

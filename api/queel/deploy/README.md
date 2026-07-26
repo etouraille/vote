@@ -73,8 +73,14 @@ curl -s http://localhost:8091/healthz
 
 A text created via node 1 is immediately readable via node 2 and node 3.
 Killing any one node still leaves reads/writes working through the other
-two (quorum = 2 of 3); the killed node catches up automatically via
-read-repair once it rejoins.
+two (quorum = 2 of 3). A node that rejoins catches up two ways: read-repair
+fixes a key the moment something re-reads it, and the background
+anti-entropy job (`QUEEL_ANTI_ENTROPY_INTERVAL`, 5s in these node*.env
+files — see `queel/cluster.RunAntiEntropy`) fixes everything else within
+one interval by comparing its whole keyspace against a random peer's via a
+Merkle tree, whether or not anyone ever reads those keys again. Wipe a
+node's data dir entirely (`rm -rf node3`) and restart it — it recovers its
+full keyspace from peers within `QUEEL_ANTI_ENTROPY_INTERVAL` on its own.
 
 ## Cleaning up
 

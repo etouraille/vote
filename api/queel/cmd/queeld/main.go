@@ -26,6 +26,13 @@
 // (QUEEL_RBAC_PATH); clustered, it rides the same replicated Store as
 // everything else instead (see queel/rbac's OpenWithStore), since a local
 // file can't safely be shared once nodes aren't on the same machine.
+//
+// Clustered nodes also run a background anti-entropy job (see
+// queel/cluster.RunAntiEntropy): every QUEEL_ANTI_ENTROPY_INTERVAL (default
+// 5m) this node compares its entire keyspace against a random peer's via a
+// Merkle tree and repairs whatever differs — catching data a peer missed
+// during a partition or disk loss that nobody happens to read again, which
+// quorum reads' read-repair alone never would.
 package main
 
 import (
@@ -67,6 +74,18 @@ func main() {
 	}
 	if clustered {
 		mux.HandleFunc("POST /internal/gossip", server.GossipHandler(membership))
+
+		// See queel/cluster.RunAntiEntropy's doc comment: catches whatever
+		// read-repair alone misses, by periodically comparing this node's
+		// entire keyspace against a random peer's via a Merkle tree instead
+		// of waiting for someone to re-read a key this node fell behind on.
+		antiEntropyInterval, err := bootstrap.AntiEntropyIntervalFromEnv()
+		if err != nil {
+			log.Fatal(err)
+		}
+		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
+		go cluster.RunAntiEntropy(context.Background(), engine, membership, self, antiEntropyInterval, cluster.DefaultAntiEntropyBuckets)
+
 		store = cluster.NewDistributedStore(coordinator)
 	}
 

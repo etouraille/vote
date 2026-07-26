@@ -3,9 +3,12 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/etouraille/queel/merkle"
 )
 
 // PeerClient talks to one node's internal replication endpoints (see
@@ -144,6 +147,90 @@ func (p *PeerClient) Scan(ctx context.Context, prefix string) ([]KeyEntry, error
 
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("peer %s: scan failed with status %d", p.baseURL, resp.StatusCode)
+	}
+	var entries []KeyEntry
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// MerkleTree fetches this one peer's current Merkle tree summary of its
+// local keyspace, partitioned into numBuckets leaves — see
+// queel/cluster.BuildTree, which is what computes it server-side. Used by
+// Reconcile to find which buckets diverge from the local tree without
+// transferring the peer's actual data first.
+func (p *PeerClient) MerkleTree(ctx context.Context, numBuckets int) (*merkle.Tree, error) {
+	body, err := json.Marshal(struct {
+		NumBuckets int `json:"numBuckets"`
+	}{NumBuckets: numBuckets})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/internal/merkle-tree", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("peer %s: merkle-tree failed with status %d", p.baseURL, resp.StatusCode)
+	}
+	var payload struct {
+		Leaves []string `json:"leaves"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	leaves := make([]merkle.Hash, len(payload.Leaves))
+	for i, hexLeaf := range payload.Leaves {
+		decoded, err := hex.DecodeString(hexLeaf)
+		if err != nil {
+			return nil, fmt.Errorf("peer %s: decoding leaf %d: %w", p.baseURL, i, err)
+		}
+		if len(decoded) != merkle.HashSize {
+			return nil, fmt.Errorf("peer %s: leaf %d has %d bytes, want %d", p.baseURL, i, len(decoded), merkle.HashSize)
+		}
+		copy(leaves[i][:], decoded)
+	}
+	return merkle.Build(leaves)
+}
+
+// MerkleBucket fetches every key/entry this one peer currently has whose
+// key hashes into bucket under the same numBuckets partitioning MerkleTree
+// used — the reconciliation step Reconcile takes once a Diff against the
+// peer's tree has flagged bucket as divergent.
+func (p *PeerClient) MerkleBucket(ctx context.Context, numBuckets, bucket int) ([]KeyEntry, error) {
+	body, err := json.Marshal(struct {
+		NumBuckets int `json:"numBuckets"`
+		Bucket     int `json:"bucket"`
+	}{NumBuckets: numBuckets, Bucket: bucket})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/internal/merkle-bucket", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("peer %s: merkle-bucket failed with status %d", p.baseURL, resp.StatusCode)
 	}
 	var entries []KeyEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
