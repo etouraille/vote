@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { docFromText, docFromTextWithHighlights, EditorComponent, TextSelection } from '../../component/app-editor/app-editor';
 import { AuthService } from '../../service/auth';
 import { LastTextStorage } from '../../service/last-text-storage';
@@ -34,6 +34,7 @@ function overlapsPartially(a: { start: number; end: number }, b: { start: number
 })
 export class EditorPage {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly textService = inject(TextService);
   private readonly auth = inject(AuthService);
   private readonly lastTextStorage = inject(LastTextStorage);
@@ -91,27 +92,37 @@ export class EditorPage {
 
     const id = this.route.snapshot.queryParamMap.get('id');
     if (id) {
-      this.loading.set(true);
-      this.textService.getWithSlots(id).subscribe({
-        next: ({ text, slots }) => {
-          this.loading.set(false);
-          this.title.set(text.title);
-          const ranges = slots.map((slot, i) => ({
-            start: slot.start,
-            end: slot.end,
-            color: HIGHLIGHT_PALETTE[i % HIGHLIGHT_PALETTE.length],
-          }));
-          this.highlightCount = ranges.length;
-          this.selectedRanges = ranges.map(({ start, end }) => ({ start, end }));
-          this.editorDocJSON.set(docFromTextWithHighlights(text.content, ranges));
-          this.savedTextId.set(text.id);
-        },
-        error: (err: HttpErrorResponse) => {
-          this.loading.set(false);
-          this.loadError.set(err.error?.error ?? 'Erreur lors du chargement du texte');
-        },
-      });
+      this.loadExistingText(id);
     }
+  }
+
+  // Loads an existing text by id and resets the editor to show it — used
+  // both for the initial ?id= on entry and, via submitProposal's 409
+  // handling, when a proposal lands on a text a closed round has already
+  // forked away: the editor jumps straight to the current version instead
+  // of leaving the user proposing edits against dead history.
+  private loadExistingText(id: string): void {
+    this.loading.set(true);
+    this.loadError.set(null);
+    this.textService.getWithSlots(id).subscribe({
+      next: ({ text, slots }) => {
+        this.loading.set(false);
+        this.title.set(text.title);
+        const ranges = slots.map((slot, i) => ({
+          start: slot.start,
+          end: slot.end,
+          color: HIGHLIGHT_PALETTE[i % HIGHLIGHT_PALETTE.length],
+        }));
+        this.highlightCount = ranges.length;
+        this.selectedRanges = ranges.map(({ start, end }) => ({ start, end }));
+        this.editorDocJSON.set(docFromTextWithHighlights(text.content, ranges));
+        this.savedTextId.set(text.id);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.loading.set(false);
+        this.loadError.set(err.error?.error ?? 'Erreur lors du chargement du texte');
+      },
+    });
   }
 
   // The sliding proposal panel: opened by highlight(), holds the [start, end)
@@ -169,7 +180,7 @@ export class EditorPage {
 
   submitProposal(): void {
     const range = this.proposal();
-    const textId = this.lastTextStorage.read()?.id ?? null;
+    const textId = this.savedTextId();
     if (!range || !textId || !this.editorComponent) return;
 
     const content = this.editorComponent.getText();
@@ -183,6 +194,19 @@ export class EditorPage {
       },
       error: (err: HttpErrorResponse) => {
         this.proposing.set(false);
+
+        // This text has already been forked by a closed round — the API
+        // names the current version in supersededBy. Jump straight there
+        // (updating the URL to match, and reloading it into this same page)
+        // instead of leaving the user proposing edits against dead history.
+        const supersededBy = err.error?.supersededBy;
+        if (err.status === 409 && supersededBy) {
+          this.closeProposal();
+          this.router.navigate(['/editor'], { queryParams: { id: supersededBy }, replaceUrl: true });
+          this.loadExistingText(supersededBy);
+          return;
+        }
+
         this.proposalError.set(err.error?.error ?? 'Erreur lors de la proposition');
       },
     });

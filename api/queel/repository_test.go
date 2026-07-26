@@ -1,6 +1,7 @@
 package queel
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -298,6 +299,51 @@ func TestProposeEditUnknownText(t *testing.T) {
 	}
 }
 
+// TestProposeEditOnSupersededTextIsRejected is the guard against branching
+// history the "cool" text in production surfaced: once a round has closed
+// and forked textID into a new version, textID's content is frozen — a
+// second, independent round should never be openable on it again, since
+// that would silently produce a sibling fork instead of continuing the one
+// version chain a reader would expect from the round numbers.
+func TestProposeEditOnSupersededTextIsRejected(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end := runeRange(content, "francais")
+	fragment, err := repo.ProposeEdit(text.ID, start, end, "français", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(fragment.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := repo.CloseRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// text.ID has now been superseded by outcome.Text.ID — a second,
+	// independent round on the original must be rejected...
+	_, err = repo.ProposeEdit(text.ID, 0, 4, "Vous", "bob")
+	var superseded *ErrTextSuperseded
+	if !errors.As(err, &superseded) {
+		t.Fatalf("expected *ErrTextSuperseded proposing an edit on a forked-away text, got %v", err)
+	}
+	if superseded.TextID != text.ID || superseded.SupersededBy != outcome.Text.ID {
+		t.Fatalf("ErrTextSuperseded = %+v, want TextID=%q SupersededBy=%q", superseded, text.ID, outcome.Text.ID)
+	}
+
+	// ...while proposing an edit on the fork itself — the actually-current
+	// version — must still work fine, same as any other text.
+	if _, err := repo.ProposeEdit(outcome.Text.ID, 0, 4, "Vous", "bob"); err != nil {
+		t.Fatalf("expected ProposeEdit on the current (forked) version to succeed, got %v", err)
+	}
+}
+
 func TestProposeEditRespectsRuneBoundaries(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Liberté, égalité, fraternité."
@@ -577,6 +623,71 @@ func TestSecondRoundBuildsOnClosedRoundContent(t *testing.T) {
 	}
 	if secondOutcome.Text.PreviousTextID != forkedText {
 		t.Fatalf("PreviousTextID = %q, want %q", secondOutcome.Text.PreviousTextID, forkedText)
+	}
+}
+
+func TestRoundCountNeverOpenedIsZero(t *testing.T) {
+	repo := newTestRepository(t)
+	text, err := repo.CreateText("Constitution", "Nous le peuple francais declare.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := repo.RoundCount(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("RoundCount for a text with no round ever opened = %d, want 0", count)
+	}
+}
+
+// TestRoundCountSurvivesAfterTheRoundCloses is the behavior CurrentRound
+// can't give search results: once a round closes, CurrentRound goes back to
+// ErrNotFound, but the forked text should still report which round produced
+// it rather than looking like it never had one.
+func TestRoundCountSurvivesAfterTheRoundCloses(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end := runeRange(content, "francais")
+	fragment, err := repo.ProposeEdit(text.ID, start, end, "français", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// While the round is open, RoundCount and CurrentRound.Number agree.
+	count, err := repo.RoundCount(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("RoundCount while round 1 is open = %d, want 1", count)
+	}
+
+	if err := repo.CastVote(fragment.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := repo.CloseRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The original text's own round is gone (it forked), but RoundCount on
+	// the *forked* text must still say 1 — that's the whole point: a closed
+	// round shouldn't look indistinguishable from "never had a round".
+	if _, err := repo.CurrentRound(outcome.Text.ID); err != ErrNotFound {
+		t.Fatalf("expected no open round on the freshly forked text, got err=%v", err)
+	}
+	count, err = repo.RoundCount(outcome.Text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("RoundCount on the forked text after closing = %d, want 1 (the round that produced it)", count)
 	}
 }
 

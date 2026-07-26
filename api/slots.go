@@ -18,6 +18,16 @@ type proposeEditRequest struct {
 	Content string `json:"content"`
 }
 
+// textSupersededResponse is what proposeEditHandler answers with when
+// queel.ErrTextSuperseded fires: textID has already been forked by a closed
+// round, so supersededBy names the current version to retry against instead
+// — enough for the front end to redirect there on its own rather than just
+// showing a dead end.
+type textSupersededResponse struct {
+	Error        string `json:"error"`
+	SupersededBy string `json:"supersededBy"`
+}
+
 // proposeEditHandler opens (or joins) a voting slot on a text: the
 // [start, end) rune range being replaced, and the author's proposed content
 // for it. Competing proposals for the same range accumulate here until the
@@ -81,6 +91,14 @@ func proposeEditHandler(repo *queel.Repository) http.HandlerFunc {
 				writeError(w, http.StatusNotFound, "texte introuvable")
 				return
 			}
+			var superseded *queel.ErrTextSuperseded
+			if errors.As(err, &superseded) {
+				writeJSON(w, http.StatusConflict, textSupersededResponse{
+					Error:        "ce texte a déjà été remplacé par une version plus récente",
+					SupersededBy: superseded.SupersededBy,
+				})
+				return
+			}
 			// The only other errors ProposeEdit returns are client-caused
 			// (invalid range, overlapping slot) and safe to relay as-is.
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -132,8 +150,11 @@ func closeRoundHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 // query is embedded the same way the indexed texts were, and Qdrant returns
 // the closest matches by cosine similarity. Each result's round number is
 // filled in live from queel (not stored in the vector index, which would go
-// stale the moment a round opens or closes after indexing) — 0 means no
-// round is currently open on that text.
+// stale the moment a round opens or closes after indexing) — via
+// RoundCount, not CurrentRound: a text whose round has already closed still
+// reports the round that produced it, rather than looking indistinguishable
+// from one that never had a round at all. 0 means no round has ever been
+// opened on that text.
 func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
@@ -150,15 +171,12 @@ func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.Handl
 		}
 
 		for i, result := range results {
-			round, err := repo.CurrentRound(result.TextID)
+			count, err := repo.RoundCount(result.TextID)
 			if err != nil {
-				if !errors.Is(err, queel.ErrNotFound) {
-					writeError(w, http.StatusInternalServerError, "erreur serveur")
-					return
-				}
-				continue
+				writeError(w, http.StatusInternalServerError, "erreur serveur")
+				return
 			}
-			results[i].RoundNumber = round.Number
+			results[i].RoundNumber = count
 		}
 
 		writeJSON(w, http.StatusOK, results)

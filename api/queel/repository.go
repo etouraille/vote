@@ -17,6 +17,19 @@ var (
 	ErrNoOpenRound = errors.New("no open round for this text")
 )
 
+// ErrTextSuperseded is returned by ProposeEdit when TextID has already been
+// forked by a previous CloseRound: its content is frozen history now, not
+// something a new round should ever be opened on again — SupersededBy is
+// the current version to propose edits against instead of TextID.
+type ErrTextSuperseded struct {
+	TextID       string
+	SupersededBy string
+}
+
+func (e *ErrTextSuperseded) Error() string {
+	return fmt.Sprintf("text %s has already been forked into %s; propose edits there instead", e.TextID, e.SupersededBy)
+}
+
 // SeedAuthorID marks the fragment automatically created from a text's
 // current content when a slot is opened on it — the "no change" baseline
 // every proposal for that slot competes against.
@@ -85,6 +98,13 @@ func currentRoundKey(textID string) []byte { return []byte("currentround/" + tex
 // a decimal string — the source of truth for Round.Number, incremented each
 // time openRound runs.
 func roundCountKey(textID string) []byte { return []byte("roundcount/" + textID) }
+
+// supersededByKey stores the ID of the text CloseRound forked textID into,
+// once that's happened — the forward pointer Text itself doesn't carry
+// (only the fork's own PreviousTextID points backward). Its presence is
+// what stops openRound from ever reopening a round on a text a fork has
+// already superseded.
+func supersededByKey(textID string) []byte { return []byte("supersededby/" + textID) }
 
 func fragmentKey(id string) []byte { return []byte("fragment/" + id) }
 
@@ -222,6 +242,24 @@ func (r *Repository) CurrentRound(textID string) (*Round, error) {
 	return r.Round(string(value))
 }
 
+// RoundCount reports how many rounds have ever been opened on textID's
+// version chain — the highest round.Number reached, whether that round is
+// still open, has since closed, or (via CloseRound's fork) belongs to a
+// previous version this text was forked from. 0 means no round has ever
+// been opened. Unlike CurrentRound, this never goes back to zero just
+// because the most recent round closed — a text's round history doesn't
+// disappear the moment nobody's actively voting on it.
+func (r *Repository) RoundCount(textID string) (int, error) {
+	value, found, err := r.store.Get(roundCountKey(textID))
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, nil
+	}
+	return strconv.Atoi(string(value))
+}
+
 // TextWithSlots fetches a text together with the slots of its current
 // round, if any. A text with no open round (never edited yet, or its last
 // round already closed) isn't an error case here — it's reported as
@@ -244,6 +282,12 @@ func (r *Repository) TextWithSlots(id string) (*TextWithSlots, error) {
 }
 
 func (r *Repository) openRound(textID string) (*Round, error) {
+	if supersededBy, found, err := r.store.Get(supersededByKey(textID)); err != nil {
+		return nil, err
+	} else if found {
+		return nil, &ErrTextSuperseded{TextID: textID, SupersededBy: string(supersededBy)}
+	}
+
 	id, err := newID()
 	if err != nil {
 		return nil, err
@@ -610,6 +654,7 @@ func (r *Repository) DeleteUserTexts(userID string) error {
 			WriteOp{Key: textKey(text.ID), Tombstone: true},
 			WriteOp{Key: currentRoundKey(text.ID), Tombstone: true},
 			WriteOp{Key: roundCountKey(text.ID), Tombstone: true},
+			WriteOp{Key: supersededByKey(text.ID), Tombstone: true},
 		)
 	}
 	if len(targetIDs) == 0 {
@@ -809,16 +854,19 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 	}
 
 	// Creating the new text, closing the round in place, clearing the old
-	// text's "current round" pointer, and seeding the new text's round
-	// counter from the round that just closed (so numbering continues
-	// across the version chain instead of restarting at 1) are all
-	// independent once the winners are resolved: one round trip covers all
-	// four. The old text itself is never written to again.
+	// text's "current round" pointer, seeding the new text's round counter
+	// from the round that just closed (so numbering continues across the
+	// version chain instead of restarting at 1), and marking the old text
+	// superseded (so openRound refuses to ever reopen a round on it — see
+	// ErrTextSuperseded) are all independent once the winners are resolved:
+	// one round trip covers all five. The old text itself is never written
+	// to again.
 	if err := r.store.WriteBatch([]WriteOp{
 		{Key: textKey(newText.ID), Value: newTextPayload},
 		{Key: roundKey(round.ID), Value: roundPayload},
 		{Key: currentRoundKey(textID), Tombstone: true},
 		{Key: roundCountKey(newText.ID), Value: []byte(strconv.Itoa(round.Number))},
+		{Key: supersededByKey(textID), Value: []byte(newText.ID)},
 	}); err != nil {
 		return nil, err
 	}

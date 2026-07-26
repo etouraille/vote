@@ -96,11 +96,19 @@ func writeError(w http.ResponseWriter, status int, message string) {
 // codes; anything else (validation failures, e.g. an invalid or overlapping
 // range) is treated as a 400.
 func writeRepositoryError(w http.ResponseWriter, err error) {
+	var superseded *queel.ErrTextSuperseded
 	switch {
 	case errors.Is(err, queel.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, queel.ErrNoOpenRound):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.As(err, &superseded):
+		// supersededBy names the current version — enough for a caller to
+		// retry there directly instead of just getting a dead end.
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error":        err.Error(),
+			"supersededBy": superseded.SupersededBy,
+		})
 	default:
 		writeError(w, http.StatusBadRequest, err.Error())
 	}
