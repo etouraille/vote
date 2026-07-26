@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/etouraille/queel"
@@ -132,13 +133,16 @@ func assignPermissionsHandler(store *Store, rbacStore *rbac.Store) http.HandlerF
 
 // deleteUserHandler removes an api account entirely: its rbac directory
 // entry if it had one (an orphaned rbac.User left behind would just be dead
-// weight, never reachable by any api account again), every fragment it ever
-// authored in queel — its content contribution — along with whatever
-// depended on that fragment (see queel.Repository.DeleteUserFragments),
-// every vote it ever cast (see DeleteUserVotes — otherwise those votes
-// would keep counting toward WinningFragment forever, under an ID nothing
-// maps to any more), and finally the account row itself.
-func deleteUserHandler(store *Store, rbacStore *rbac.Store, textRepo *queel.Repository) http.HandlerFunc {
+// weight, never reachable by any api account again), every text it ever
+// created (see DeleteUserTexts) — purged from the search index too, so a
+// deleted text can't keep showing up as a result that 404s the moment
+// someone clicks it — every fragment it ever authored in queel — its
+// content contribution — along with whatever depended on that fragment
+// (see queel.Repository.DeleteUserFragments), every vote it ever cast (see
+// DeleteUserVotes — otherwise those votes would keep counting toward
+// WinningFragment forever, under an ID nothing maps to any more), and
+// finally the account row itself.
+func deleteUserHandler(store *Store, rbacStore *rbac.Store, textRepo *queel.Repository, index *searchIndexer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsFromContext(r)
 		if !ok || !claims.Root {
@@ -169,9 +173,15 @@ func deleteUserHandler(store *Store, rbacStore *rbac.Store, textRepo *queel.Repo
 			}
 		}
 
-		if err := textRepo.DeleteUserTexts(id); err != nil {
+		deletedTextIDs, err := textRepo.DeleteUserTexts(id)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
+		}
+		for _, textID := range deletedTextIDs {
+			if err := index.RemoveText(r.Context(), textID); err != nil {
+				log.Printf("failed to remove text %s from the search index after deleting user %s: %v", textID, id, err)
+			}
 		}
 
 		if err := textRepo.DeleteUserFragments(id); err != nil {

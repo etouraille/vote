@@ -910,8 +910,18 @@ func TestDeleteUserTextsRemovesEntireVersionChain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repo.DeleteUserTexts("alice"); err != nil {
+	deletedIDs, err := repo.DeleteUserTexts("alice")
+	if err != nil {
 		t.Fatal(err)
+	}
+	wantDeleted := map[string]bool{original.ID: true, forked.ID: true}
+	if len(deletedIDs) != len(wantDeleted) {
+		t.Fatalf("DeleteUserTexts returned %v, want exactly %v", deletedIDs, wantDeleted)
+	}
+	for _, id := range deletedIDs {
+		if !wantDeleted[id] {
+			t.Fatalf("DeleteUserTexts returned unexpected id %q, want only %v", id, wantDeleted)
+		}
 	}
 
 	if _, err := repo.Text(original.ID); err != ErrNotFound {
@@ -945,7 +955,74 @@ func TestDeleteUserTextsRemovesEntireVersionChain(t *testing.T) {
 
 func TestDeleteUserTextsNoTextsIsNoop(t *testing.T) {
 	repo := newTestRepository(t)
-	if err := repo.DeleteUserTexts("nobody"); err != nil {
+	deletedIDs, err := repo.DeleteUserTexts("nobody")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(deletedIDs) != 0 {
+		t.Fatalf("expected no deleted ids, got %v", deletedIDs)
+	}
+}
+
+func TestDeleteTextRemovesItsRoundsFragmentsAndVotesButNotForksOrOtherTexts(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end := runeRange(content, "francais")
+	fragment, err := repo.ProposeEdit(text.ID, start, end, "français", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CastVote(fragment.ID, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := repo.CloseRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unrelated, err := repo.CreateText("Autre texte", "Contenu neutre.", "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteText(text.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.Text(text.ID); err != ErrNotFound {
+		t.Fatalf("expected the deleted text to be gone, got err=%v", err)
+	}
+	if _, err := repo.Fragment(fragment.ID); err != ErrNotFound {
+		t.Fatalf("expected its fragment to be gone, got err=%v", err)
+	}
+	votes, err := repo.VoteCount(fragment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votes != 0 {
+		t.Fatalf("VoteCount for deleted fragment = %d, want 0", votes)
+	}
+
+	// DeleteText only removes the exact ID given — the fork CloseRound
+	// produced is its own independent text, untouched.
+	if _, err := repo.Text(outcome.Text.ID); err != nil {
+		t.Fatalf("expected the fork to survive deleting its predecessor, got err=%v", err)
+	}
+
+	// A completely unrelated text must never be touched.
+	if _, err := repo.Text(unrelated.ID); err != nil {
+		t.Fatalf("expected an unrelated text to be untouched, got err=%v", err)
+	}
+}
+
+func TestDeleteTextUnknownTextIsNotFound(t *testing.T) {
+	repo := newTestRepository(t)
+	if err := repo.DeleteText("does-not-exist"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

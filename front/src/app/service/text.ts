@@ -56,4 +56,8 @@ export class TextService {
   closeRound(textId: string): Observable<unknown> {
     return this.http.post(`${API_BASE_URL}/api/texts/${textId}/close-round`, {});
   }
+
+  deleteText(id: string): Observable<unknown> {
+    return this.http.delete(`${API_BASE_URL}/api/texts/${id}`);
+  }
 }

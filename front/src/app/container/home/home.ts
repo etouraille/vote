@@ -43,17 +43,27 @@ export class HomePage implements OnInit {
   readonly canVote = signal(false);
   readonly canCloseText = signal(false);
 
+  // Deleting a text outright is root-only (see api's deleteTextHandler) —
+  // not gated by any of the canX permissions above, same bar as the
+  // Backoffice link in the header.
+  readonly isRoot = signal(false);
+
   // Per-result close-round state, keyed by textId — a search list can hold
   // several results at once, each closeable independently.
   readonly closingTextId = signal<string | null>(null);
   readonly closedTextIds = signal<ReadonlySet<string>>(new Set());
   readonly closeErrors = signal<Readonly<Record<string, string>>>({});
 
+  // Per-result delete state, same shape as close-round above.
+  readonly deletingTextId = signal<string | null>(null);
+  readonly deleteErrors = signal<Readonly<Record<string, string>>>({});
+
   ngOnInit(): void {
     this.auth.me().subscribe((me) => {
       this.canAmendText.set(me.root || me.permissions.canSelect || me.permissions.canEditSelection);
       this.canVote.set(me.root || me.permissions.canVote);
       this.canCloseText.set(me.root || me.permissions.canCloseText);
+      this.isRoot.set(me.root);
     });
     this.loadRecentTexts();
   }
@@ -114,6 +124,28 @@ export class HomePage implements OnInit {
         this.closeErrors.update((errors) => ({
           ...errors,
           [textId]: err.error?.error ?? 'Erreur lors de la clôture du tour',
+        }));
+      },
+    });
+  }
+
+  deleteText(result: SearchResult): void {
+    if (!confirm(`Supprimer le texte « ${result.title} » ? Cette action est irréversible.`)) return;
+
+    const textId = result.textId;
+    this.deletingTextId.set(textId);
+    this.deleteErrors.update(({ [textId]: _dropped, ...rest }) => rest);
+
+    this.textService.deleteText(textId).subscribe({
+      next: () => {
+        this.deletingTextId.set(null);
+        this.searchResults.update((results) => (results ?? []).filter((r) => r.textId !== textId));
+      },
+      error: (err: HttpErrorResponse) => {
+        this.deletingTextId.set(null);
+        this.deleteErrors.update((errors) => ({
+          ...errors,
+          [textId]: err.error?.error ?? 'Erreur lors de la suppression',
         }));
       },
     });

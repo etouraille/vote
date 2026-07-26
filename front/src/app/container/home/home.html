@@ -121,9 +121,22 @@
                         </button>
                       }
                     }
+                    @if (isRoot()) {
+                      <button
+                        type="button"
+                        (click)="deleteText(result)"
+                        [disabled]="deletingTextId() === result.textId"
+                        class="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
+                      >
+                        {{ deletingTextId() === result.textId ? 'Suppression…' : 'Supprimer' }}
+                      </button>
+                    }
                   </span>
                 </div>
                 @if (closeErrors()[result.textId]; as error) {
+                  <p class="text-xs text-red-600">{{ error }}</p>
+                }
+                @if (deleteErrors()[result.textId]; as error) {
                   <p class="text-xs text-red-600">{{ error }}</p>
                 }
               </li>

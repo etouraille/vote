@@ -215,3 +215,41 @@ func updateTextHandler(repo *queel.Repository) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, textResponse{ID: text.ID})
 	}
 }
+
+// deleteTextHandler removes a single text outright — see
+// queel.Repository.DeleteText for exactly what that cascades to (its
+// rounds/fragments/votes, but not any text it was later forked into). Root
+// only: unlike updateTextHandler this bypasses the voting workflow
+// entirely and can't be undone, the same bar as the /api/admin/... routes.
+func deleteTextHandler(repo *queel.Repository, index *searchIndexer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireRoot(w, r) {
+			return
+		}
+
+		id := r.PathValue("id")
+
+		deleteErr := repo.DeleteText(id)
+		if deleteErr != nil && !errors.Is(deleteErr, queel.ErrNotFound) {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		// Best-effort even when queel already had no such text — a search
+		// index entry can outlive it (e.g. left behind by a deletion path
+		// that predates this one, DeleteUserTexts, which never purged the
+		// index). Nothing should keep serving a result for a text that's
+		// gone just because there's nothing left on the queel side to
+		// "delete" a second time.
+		if err := index.RemoveText(r.Context(), id); err != nil {
+			log.Printf("failed to remove text %s from the search index after deletion: %v", id, err)
+		}
+
+		if errors.Is(deleteErr, queel.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "texte introuvable")
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

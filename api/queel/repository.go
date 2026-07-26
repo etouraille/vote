@@ -633,10 +633,17 @@ func (r *Repository) DeleteUserFragments(userID string) error {
 // DeleteUserVotes: it removes other people's contributions too, wherever
 // they live on a text this user created. That's inherent to actually
 // deleting the text rather than just unlinking this user from it.
-func (r *Repository) DeleteUserTexts(userID string) error {
+//
+// It returns the IDs of every text it deleted — queel has no notion of a
+// search index of its own, so a caller that maintains one (see this repo's
+// api/search.go) needs these to purge it too. Skipping that isn't just a
+// cosmetic gap: a caller that ignores this return value leaves stale
+// entries an end user can still find and click into, 404ing on a text that
+// no longer exists.
+func (r *Repository) DeleteUserTexts(userID string) ([]string, error) {
 	textKVs, err := r.store.Scan(textPrefix())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var targetIDs []string
@@ -644,7 +651,7 @@ func (r *Repository) DeleteUserTexts(userID string) error {
 	for _, kv := range textKVs {
 		var text Text
 		if err := json.Unmarshal(kv.Value, &text); err != nil {
-			return err
+			return nil, err
 		}
 		if text.CreatedBy != userID {
 			continue
@@ -658,12 +665,90 @@ func (r *Repository) DeleteUserTexts(userID string) error {
 		)
 	}
 	if len(targetIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	targets := make(map[string]bool, len(targetIDs))
 	for _, id := range targetIDs {
 		targets[id] = true
+	}
+
+	// Rounds aren't indexed by text, so this is a full scan filtered
+	// in-memory — same trade-off RecentTexts and the other Delete* methods
+	// already make at this codebase's scale.
+	roundKVs, err := r.store.Scan([]byte("round/"))
+	if err != nil {
+		return nil, err
+	}
+	for _, kv := range roundKVs {
+		var round Round
+		if err := json.Unmarshal(kv.Value, &round); err != nil {
+			return nil, err
+		}
+		if targets[round.TextID] {
+			ops = append(ops, WriteOp{Key: roundKey(round.ID), Tombstone: true})
+		}
+	}
+
+	for _, textID := range targetIDs {
+		// The fragment→slot index is prefixed by textID, and its values are
+		// exactly the fragment IDs it points at — scanning it both finds
+		// every fragment ever proposed for this text and lets us delete the
+		// index entries themselves in the same pass.
+		indexKVs, err := r.store.Scan([]byte("fragmentindex/" + textID + "/"))
+		if err != nil {
+			return nil, err
+		}
+		for _, kv := range indexKVs {
+			fragmentID := string(kv.Value)
+			ops = append(ops,
+				WriteOp{Key: kv.Key, Tombstone: true},
+				WriteOp{Key: fragmentKey(fragmentID), Tombstone: true},
+			)
+
+			voteKVs, err := r.store.Scan(votePrefix(fragmentID))
+			if err != nil {
+				return nil, err
+			}
+			for _, voteKV := range voteKVs {
+				ops = append(ops, WriteOp{Key: voteKV.Key, Tombstone: true})
+			}
+		}
+
+		uservoteKVs, err := r.store.Scan([]byte("uservote/" + textID + "/"))
+		if err != nil {
+			return nil, err
+		}
+		for _, kv := range uservoteKVs {
+			ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
+		}
+	}
+
+	if err := r.store.WriteBatch(ops); err != nil {
+		return nil, err
+	}
+	return targetIDs, nil
+}
+
+// DeleteText removes a single text outright — itself, every round ever
+// opened on it, every fragment proposed for any of those rounds' slots
+// (whoever authored them), every vote on those fragments, and every voter's
+// current-choice pointer for those slots. Unlike DeleteUserTexts, this
+// takes no creator into account: it deletes exactly the ID given, an
+// explicit admin action rather than a consequence of removing an account.
+// It does not follow supersededByKey to also remove whatever this text was
+// later forked into — a fork is its own independent text with its own ID;
+// delete it explicitly too if that's the intent.
+func (r *Repository) DeleteText(textID string) error {
+	if _, err := r.Text(textID); err != nil {
+		return err
+	}
+
+	ops := []WriteOp{
+		{Key: textKey(textID), Tombstone: true},
+		{Key: currentRoundKey(textID), Tombstone: true},
+		{Key: roundCountKey(textID), Tombstone: true},
+		{Key: supersededByKey(textID), Tombstone: true},
 	}
 
 	// Rounds aren't indexed by text, so this is a full scan filtered
@@ -678,43 +763,41 @@ func (r *Repository) DeleteUserTexts(userID string) error {
 		if err := json.Unmarshal(kv.Value, &round); err != nil {
 			return err
 		}
-		if targets[round.TextID] {
+		if round.TextID == textID {
 			ops = append(ops, WriteOp{Key: roundKey(round.ID), Tombstone: true})
 		}
 	}
 
-	for _, textID := range targetIDs {
-		// The fragment→slot index is prefixed by textID, and its values are
-		// exactly the fragment IDs it points at — scanning it both finds
-		// every fragment ever proposed for this text and lets us delete the
-		// index entries themselves in the same pass.
-		indexKVs, err := r.store.Scan([]byte("fragmentindex/" + textID + "/"))
+	// The fragment→slot index is prefixed by textID, and its values are
+	// exactly the fragment IDs it points at — scanning it both finds every
+	// fragment ever proposed for this text and lets us delete the index
+	// entries themselves in the same pass.
+	indexKVs, err := r.store.Scan([]byte("fragmentindex/" + textID + "/"))
+	if err != nil {
+		return err
+	}
+	for _, kv := range indexKVs {
+		fragmentID := string(kv.Value)
+		ops = append(ops,
+			WriteOp{Key: kv.Key, Tombstone: true},
+			WriteOp{Key: fragmentKey(fragmentID), Tombstone: true},
+		)
+
+		voteKVs, err := r.store.Scan(votePrefix(fragmentID))
 		if err != nil {
 			return err
 		}
-		for _, kv := range indexKVs {
-			fragmentID := string(kv.Value)
-			ops = append(ops,
-				WriteOp{Key: kv.Key, Tombstone: true},
-				WriteOp{Key: fragmentKey(fragmentID), Tombstone: true},
-			)
+		for _, voteKV := range voteKVs {
+			ops = append(ops, WriteOp{Key: voteKV.Key, Tombstone: true})
+		}
+	}
 
-			voteKVs, err := r.store.Scan(votePrefix(fragmentID))
-			if err != nil {
-				return err
-			}
-			for _, voteKV := range voteKVs {
-				ops = append(ops, WriteOp{Key: voteKV.Key, Tombstone: true})
-			}
-		}
-
-		uservoteKVs, err := r.store.Scan([]byte("uservote/" + textID + "/"))
-		if err != nil {
-			return err
-		}
-		for _, kv := range uservoteKVs {
-			ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
-		}
+	uservoteKVs, err := r.store.Scan([]byte("uservote/" + textID + "/"))
+	if err != nil {
+		return err
+	}
+	for _, kv := range uservoteKVs {
+		ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
 	}
 
 	return r.store.WriteBatch(ops)
