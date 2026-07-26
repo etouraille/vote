@@ -10,6 +10,13 @@ export interface Text {
   createdAt: string;
 }
 
+// What GET /api/texts (the home page's "Derniers textes") returns — a Text
+// plus whether the current user follows it, same gating role as
+// SearchResult.subscribed below.
+export interface RecentText extends Text {
+  subscribed: boolean;
+}
+
 export interface SearchResult {
   textId: string;
   title: string;

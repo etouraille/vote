@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/etouraille/queel"
@@ -104,10 +105,28 @@ func createTextHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 	}
 }
 
+// recentTextResult is a queel.Text plus whether the caller follows it —
+// same Subscribed role as SearchResult's, decorated here rather than on
+// queel.Text itself since it depends on who's asking, not on the text.
+type recentTextResult struct {
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	Content    string    `json:"content"`
+	Finalized  bool      `json:"finalized"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Subscribed bool      `json:"subscribed"`
+}
+
 // recentTextsHandler lists the most recently created texts — for the home
 // page's "latest texts" cards, e.g.
 func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
+
 		limit := defaultRecentTextsLimit
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			parsed, err := strconv.Atoi(raw)
@@ -126,7 +145,24 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
-		writeJSON(w, http.StatusOK, texts)
+
+		results := make([]recentTextResult, 0, len(texts))
+		for _, text := range texts {
+			subscribed, err := repo.IsSubscribed(claims.Subject, text.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "erreur serveur")
+				return
+			}
+			results = append(results, recentTextResult{
+				ID:         text.ID,
+				Title:      text.Title,
+				Content:    text.Content,
+				Finalized:  text.Finalized,
+				CreatedAt:  text.CreatedAt,
+				Subscribed: subscribed,
+			})
+		}
+		writeJSON(w, http.StatusOK, results)
 	}
 }
 

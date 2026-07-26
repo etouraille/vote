@@ -12,9 +12,19 @@ const RECENT_TEXTS_COUNT = 4;
 const EXCERPT_WORD_COUNT = 100;
 
 export interface RecentTextCard {
-  id: string;
+  textId: string;
   title: string;
   excerpt: string;
+  subscribed: boolean;
+}
+
+// The shape every subscribe/close-round/delete action needs — satisfied by
+// both SearchResult and RecentTextCard, so the same handful of methods
+// drive the action buttons on both the search-results list and the
+// "Derniers textes" grid instead of duplicating them per list.
+interface ActionTarget {
+  textId: string;
+  title: string;
 }
 
 @Component({
@@ -62,7 +72,7 @@ export class HomePage implements OnInit {
 
   // The "Clore un round" popin: which result it's open for (null = closed),
   // and the day count bound to its "dans N jours" input.
-  readonly closeRoundPopup = signal<SearchResult | null>(null);
+  readonly closeRoundPopup = signal<ActionTarget | null>(null);
   closeDays = 7;
 
   // Set once scheduleClose succeeds, so the row can show when the round is
@@ -87,9 +97,10 @@ export class HomePage implements OnInit {
     this.textService.listRecent(RECENT_TEXTS_COUNT).subscribe((texts) => {
       this.recentTexts.set(
         texts.map((text) => ({
-          id: text.id,
+          textId: text.id,
           title: text.title,
           excerpt: firstWords(text.content, 0, EXCERPT_WORD_COUNT),
+          subscribed: text.subscribed,
         })),
       );
     });
@@ -127,19 +138,19 @@ export class HomePage implements OnInit {
   // Opens the "Clore un round" popin for one result instead of closing
   // immediately — the popin lets the user pick between closing right now or
   // scheduling the close for N days out.
-  openCloseRoundPopup(result: SearchResult): void {
+  openCloseRoundPopup(target: ActionTarget): void {
     this.closeDays = 7;
-    this.closeRoundPopup.set(result);
+    this.closeRoundPopup.set(target);
   }
 
   dismissCloseRoundPopup(): void {
     this.closeRoundPopup.set(null);
   }
 
-  confirmCloseNow(result: SearchResult): void {
+  confirmCloseNow(target: ActionTarget): void {
     this.dismissCloseRoundPopup();
 
-    const textId = result.textId;
+    const textId = target.textId;
     this.closingTextId.set(textId);
     this.closeErrors.update(({ [textId]: _dropped, ...rest }) => rest);
 
@@ -158,8 +169,8 @@ export class HomePage implements OnInit {
     });
   }
 
-  confirmScheduleClose(result: SearchResult): void {
-    const textId = result.textId;
+  confirmScheduleClose(target: ActionTarget): void {
+    const textId = target.textId;
     const days = this.closeDays;
     this.dismissCloseRoundPopup();
 
@@ -182,11 +193,12 @@ export class HomePage implements OnInit {
   }
 
   // Subscribing is what reveals the Voter/Éditer/Clore un round/Supprimer
-  // buttons for this result (see the template's [subscribed] checks) —
-  // updating searchResults() in place is what makes them appear right
-  // away, without re-running the search.
-  subscribe(result: SearchResult): void {
-    const textId = result.textId;
+  // buttons for this target (see the template's [subscribed] checks) —
+  // updating both lists in place is what makes them appear right away on
+  // whichever one (search results, the "Derniers textes" grid, or both)
+  // currently shows this text, without re-fetching either.
+  subscribe(target: ActionTarget): void {
+    const textId = target.textId;
     this.subscribingTextId.set(textId);
     this.subscribeErrors.update(({ [textId]: _dropped, ...rest }) => rest);
 
@@ -195,6 +207,9 @@ export class HomePage implements OnInit {
         this.subscribingTextId.set(null);
         this.searchResults.update(
           (results) => results?.map((r) => (r.textId === textId ? { ...r, subscribed: true } : r)) ?? null,
+        );
+        this.recentTexts.update((cards) =>
+          cards.map((c) => (c.textId === textId ? { ...c, subscribed: true } : c)),
         );
       },
       error: (err: HttpErrorResponse) => {
@@ -207,10 +222,10 @@ export class HomePage implements OnInit {
     });
   }
 
-  deleteText(result: SearchResult): void {
-    if (!confirm(`Supprimer le texte « ${result.title} » ? Cette action est irréversible.`)) return;
+  deleteText(target: ActionTarget): void {
+    if (!confirm(`Supprimer le texte « ${target.title} » ? Cette action est irréversible.`)) return;
 
-    const textId = result.textId;
+    const textId = target.textId;
     this.deletingTextId.set(textId);
     this.deleteErrors.update(({ [textId]: _dropped, ...rest }) => rest);
 
@@ -218,6 +233,7 @@ export class HomePage implements OnInit {
       next: () => {
         this.deletingTextId.set(null);
         this.searchResults.update((results) => (results ?? []).filter((r) => r.textId !== textId));
+        this.recentTexts.update((cards) => cards.filter((c) => c.textId !== textId));
       },
       error: (err: HttpErrorResponse) => {
         this.deletingTextId.set(null);

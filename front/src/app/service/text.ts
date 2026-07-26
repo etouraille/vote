@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from '../api-base-url';
-import { CreateTextResponse, Fragment, SearchResult, Text, TextWithSlots } from '../model/text.model';
+import { CreateTextResponse, Fragment, RecentText, SearchResult, Text, TextWithSlots } from '../model/text.model';
 
 @Service()
 export class TextService {
@@ -18,8 +18,8 @@ export class TextService {
 
   // The most recently created texts, newest first — for the home page's
   // "latest texts" cards.
-  listRecent(limit: number): Observable<Text[]> {
-    return this.http.get<Text[]>(`${API_BASE_URL}/api/texts`, { params: { limit } });
+  listRecent(limit: number): Observable<RecentText[]> {
+    return this.http.get<RecentText[]>(`${API_BASE_URL}/api/texts`, { params: { limit } });
   }
 
   // Text + the slots of its current round, if any — one call instead of
