@@ -232,7 +232,11 @@ export class HomePage implements OnInit {
     this.textService.deleteText(textId).subscribe({
       next: () => {
         this.deletingTextId.set(null);
-        this.searchResults.update((results) => (results ?? []).filter((r) => r.textId !== textId));
+        // null (no search active) must stay null — filtering it into [] would
+        // make the template's `@if (searchResults(); as results)` treat an
+        // empty array as truthy and pop up the "no results" search panel
+        // out of nowhere, even though nobody searched for anything.
+        this.searchResults.update((results) => (results ? results.filter((r) => r.textId !== textId) : results));
         this.recentTexts.update((cards) => cards.filter((c) => c.textId !== textId));
       },
       error: (err: HttpErrorResponse) => {
