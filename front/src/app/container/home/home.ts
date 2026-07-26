@@ -8,7 +8,11 @@ import { AuthService } from '../../service/auth';
 import { TextService } from '../../service/text';
 import { firstWords } from '../../util/words';
 
-const RECENT_TEXTS_COUNT = 4;
+// Was 4 (just enough for 2 rows of the 2-column grid) back when the
+// section couldn't scroll — now that it's a fixed-height scrollable zone
+// (see home.html), fetch a proper batch to actually scroll through,
+// matching the API's own default limit.
+const RECENT_TEXTS_COUNT = 20;
 const EXCERPT_WORD_COUNT = 100;
 
 export interface RecentTextCard {

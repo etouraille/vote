@@ -37,7 +37,8 @@
         [class.pointer-events-none]="searchResults()"
       >
         <h2 class="mb-3 text-sm font-medium text-slate-500">Derniers textes</h2>
-        <div class="grid grid-cols-2 gap-4">
+        <div class="max-h-[26rem] overflow-y-auto pr-1">
+          <div class="grid grid-cols-2 gap-4">
           @for (card of recentTexts(); track card.textId) {
             <div class="group relative h-40 overflow-hidden rounded-lg border border-slate-200 p-4">
               <h3 class="truncate text-sm font-semibold text-slate-900 transition duration-200 group-hover:opacity-40">{{ card.title }}</h3>
@@ -102,6 +103,7 @@
               </div>
             </div>
           }
+          </div>
         </div>
       </section>
     }
