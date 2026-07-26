@@ -1333,3 +1333,121 @@ func TestDeleteTextUnknownTextIsNotFound(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+// TestDeleteTextRemovesOtherUsersSubscriptionsToIt proves DeleteText cleans
+// up subscriptions made by users other than the text's own author — the
+// case that matters when a user is deleted: DeleteUserTexts removes their
+// texts via this same method, and anyone else who'd subscribed to one of
+// those texts must not end up with a subscription pointing at nothing.
+func TestDeleteTextRemovesOtherUsersSubscriptionsToIt(t *testing.T) {
+	repo := newTestRepository(t)
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := repo.CreateText("Autre texte", "Contenu neutre.", "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.Subscribe("alice", text.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("bob", text.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("alice", other.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteText(text.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, userID := range []string{"alice", "bob"} {
+		subscribed, err := repo.IsSubscribed(userID, text.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if subscribed {
+			t.Fatalf("%s's subscription to the deleted text should be gone", userID)
+		}
+	}
+
+	// alice's unrelated subscription to a different text must survive.
+	stillSubscribed, err := repo.IsSubscribed("alice", other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stillSubscribed {
+		t.Fatal("alice's subscription to an unrelated text must not be touched")
+	}
+
+	// And her per-user index must agree — only the unrelated text remains.
+	aliceSubs, err := repo.SubscriptionsForUser("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliceSubs) != 1 || aliceSubs[0] != other.ID {
+		t.Fatalf("SubscriptionsForUser(alice) = %v, want exactly [%q]", aliceSubs, other.ID)
+	}
+}
+
+func TestDeleteUserSubscriptionsRemovesOnlyThatUsers(t *testing.T) {
+	repo := newTestRepository(t)
+	textA, err := repo.CreateText("Text A", "content", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	textB, err := repo.CreateText("Text B", "content", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.Subscribe("alice", textA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("alice", textB.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("bob", textA.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteUserSubscriptions("alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, textID := range []string{textA.ID, textB.ID} {
+		subscribed, err := repo.IsSubscribed("alice", textID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if subscribed {
+			t.Fatalf("alice's subscription to %s should be gone", textID)
+		}
+	}
+	aliceSubs, err := repo.SubscriptionsForUser("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliceSubs) != 0 {
+		t.Fatalf("SubscriptionsForUser(alice) = %v, want none left", aliceSubs)
+	}
+
+	// bob's subscription is untouched.
+	bobSubscribed, err := repo.IsSubscribed("bob", textA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bobSubscribed {
+		t.Fatal("bob's subscription must survive deleting alice's")
+	}
+}
+
+func TestDeleteUserSubscriptionsNoSubscriptionsIsNoop(t *testing.T) {
+	repo := newTestRepository(t)
+	if err := repo.DeleteUserSubscriptions("nobody"); err != nil {
+		t.Fatal(err)
+	}
+}

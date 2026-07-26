@@ -403,6 +403,32 @@ func (r *Repository) SubscriptionsForUser(userID string) ([]string, error) {
 	return textIDs, nil
 }
 
+// DeleteUserSubscriptions removes every subscription userID ever made —
+// both the direct record (subscriptionKey) and its entry in the per-user
+// index (subscriptionIndexKey) that listed it. Scanning the index directly
+// gives us the exact textID for each one, so unlike DeleteUserVotes this
+// doesn't need a full scan of every subscription ever made plus a suffix
+// match.
+func (r *Repository) DeleteUserSubscriptions(userID string) error {
+	kvs, err := r.store.Scan(subscriptionIndexPrefix(userID))
+	if err != nil {
+		return err
+	}
+
+	var ops []WriteOp
+	for _, kv := range kvs {
+		textID := string(kv.Value)
+		ops = append(ops,
+			WriteOp{Key: kv.Key, Tombstone: true},
+			WriteOp{Key: subscriptionKey(textID, userID), Tombstone: true},
+		)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	return r.store.WriteBatch(ops)
+}
+
 // TextWithSlots fetches a text together with the slots of its current
 // round, if any. A text with no open round (never edited yet, or its last
 // round already closed) isn't an error case here — it's reported as
@@ -941,6 +967,26 @@ func (r *Repository) DeleteText(textID string) error {
 	}
 	for _, kv := range uservoteKVs {
 		ops = append(ops, WriteOp{Key: kv.Key, Tombstone: true})
+	}
+
+	// Every subscription to this text, from whichever users made them —
+	// not just the one being cascaded from a deleted account (see
+	// DeleteUserSubscriptions) — must go too, or their per-user index would
+	// keep pointing at a text that no longer exists. subscriptionKey's
+	// prefix is exactly "subscription/<textID>/", so this scan finds all of
+	// them; each key's suffix after that prefix is the subscriber's userID,
+	// needed to also remove their reverse index entry.
+	subscriptionPrefix := "subscription/" + textID + "/"
+	subscriptionKVs, err := r.store.Scan([]byte(subscriptionPrefix))
+	if err != nil {
+		return err
+	}
+	for _, kv := range subscriptionKVs {
+		userID := strings.TrimPrefix(string(kv.Key), subscriptionPrefix)
+		ops = append(ops,
+			WriteOp{Key: kv.Key, Tombstone: true},
+			WriteOp{Key: subscriptionIndexKey(userID, textID), Tombstone: true},
+		)
 	}
 
 	return r.store.WriteBatch(ops)

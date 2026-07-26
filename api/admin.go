@@ -194,6 +194,11 @@ func deleteUserHandler(store *Store, rbacStore *rbac.Store, textRepo *queel.Repo
 			return
 		}
 
+		if err := textRepo.DeleteUserSubscriptions(id); err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
 		if err := store.DeleteUser(r.Context(), id); err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
