@@ -43,10 +43,10 @@ export class HomePage implements OnInit {
   readonly canVote = signal(false);
   readonly canCloseText = signal(false);
 
-  // Deleting a text outright is root-only (see api's deleteTextHandler) —
-  // not gated by any of the canX permissions above, same bar as the
-  // Backoffice link in the header.
-  readonly isRoot = signal(false);
+  // Deleting a text outright reuses the canCreateText permission as its
+  // bar (see api's deleteTextHandler) — whoever can create texts can also
+  // remove one from here, rather than a dedicated permission bit.
+  readonly canDeleteText = signal(false);
 
   // Per-result close-round state, keyed by textId — a search list can hold
   // several results at once, each closeable independently.
@@ -63,7 +63,7 @@ export class HomePage implements OnInit {
       this.canAmendText.set(me.root || me.permissions.canSelect || me.permissions.canEditSelection);
       this.canVote.set(me.root || me.permissions.canVote);
       this.canCloseText.set(me.root || me.permissions.canCloseText);
-      this.isRoot.set(me.root);
+      this.canDeleteText.set(me.root || me.permissions.canCreateText);
     });
     this.loadRecentTexts();
   }

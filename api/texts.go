@@ -218,12 +218,15 @@ func updateTextHandler(repo *queel.Repository) http.HandlerFunc {
 
 // deleteTextHandler removes a single text outright — see
 // queel.Repository.DeleteText for exactly what that cascades to (its
-// rounds/fragments/votes, but not any text it was later forked into). Root
-// only: unlike updateTextHandler this bypasses the voting workflow
-// entirely and can't be undone, the same bar as the /api/admin/... routes.
+// rounds/fragments/votes, but not any text it was later forked into).
+// Gated on the same right as creating a text in the first place
+// (rbac.ActionCreateText) rather than a dedicated permission bit — whoever
+// can add a text to the corpus can also remove one.
 func deleteTextHandler(repo *queel.Repository, index *searchIndexer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !requireRoot(w, r) {
+		claims, ok := claimsFromContext(r)
+		if !ok || !claims.Allows(rbac.ActionCreateText) {
+			writeError(w, http.StatusForbidden, "droits insuffisants")
 			return
 		}
 
