@@ -57,12 +57,13 @@ func main() {
 	// the storage layer changes nothing about which routes are protected or
 	// how.
 	var queelStore queel.Store = queelEngine
+	var self cluster.Node
 	coordinator, membership, clustered, err := bootstrap.JoinFromEnv(context.Background())
 	if err != nil {
 		log.Fatalf("joining queel cluster: %v", err)
 	}
 	if clustered {
-		self := cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
+		self = cluster.Node(os.Getenv(bootstrap.EnvNodeAddress))
 		replicationFactor, err := bootstrap.ReplicationFactorFromEnv()
 		if err != nil {
 			log.Fatalf("replication factor: %v", err)
@@ -175,7 +176,25 @@ func main() {
 		}
 		scheduledCloseInterval = parsed
 	}
-	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval)
+
+	// Single-node: nil, this is the only process that could run it anyway.
+	// Clustered: every node runs this same main(), so without this check
+	// every node would redundantly re-scan the same replicated data (and
+	// could race each other to close the same round) on every tick. Nodes
+	// are otherwise perfectly symmetric here — no primary, no leader
+	// election — so rather than stand up real leader election, this just
+	// designates whichever alive node sorts first (AliveNodes() is already
+	// stably sorted) as the one that runs it. Self-healing for free: if
+	// that node dies, the next gossip round's AliveNodes() promotes
+	// whichever node is now first, with no coordination required.
+	var isScheduledCloseLeader func() bool
+	if clustered {
+		isScheduledCloseLeader = func() bool {
+			alive := membership.AliveNodes()
+			return len(alive) > 0 && alive[0] == self
+		}
+	}
+	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval, isScheduledCloseLeader)
 
 	mux := http.NewServeMux()
 	// Outside the /api/... prefix on purpose — requireToken only gates that

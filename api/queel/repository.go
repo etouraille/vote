@@ -92,9 +92,9 @@ func textPrefix() []byte { return []byte("text/") }
 
 func roundKey(id string) []byte { return []byte("round/" + id) }
 
-func roundPrefix() []byte { return []byte("round/") }
-
 func currentRoundKey(textID string) []byte { return []byte("currentround/" + textID) }
+
+func currentRoundPrefix() []byte { return []byte("currentround/") }
 
 // roundCountKey stores how many rounds have ever been opened on textID, as
 // a decimal string — the source of truth for Round.Number, incremented each
@@ -273,24 +273,28 @@ func (r *Repository) ScheduleRoundClose(textID string, closeAt time.Time) (*Roun
 
 // DueScheduledRounds returns every round whose ScheduledCloseAt has passed
 // as of now and hasn't been closed yet — what a periodic background worker
-// should call CloseRound on next. Scans every round ever opened (there is
-// no "open rounds" index to narrow this by), which is fine at the scale
-// queel targets today (see queel/cluster's anti-entropy doc comment for the
-// same tradeoff made there).
+// should call CloseRound on next. Scans the currentround/ index (one entry
+// per text with a round still open) rather than every round/ ever opened,
+// so the cost tracks how many rounds are open right now, not how many have
+// ever existed across the app's whole history. The explicit Status check
+// below is belt-and-suspenders: WriteBatch only promises to land several
+// keys together, not that every Store implementation makes that atomic, so
+// a round already flipped to closed elsewhere is excluded here too rather
+// than trusted to have vanished from the index already.
 func (r *Repository) DueScheduledRounds(now time.Time) ([]*Round, error) {
-	kvs, err := r.store.Scan(roundPrefix())
+	kvs, err := r.store.Scan(currentRoundPrefix())
 	if err != nil {
 		return nil, err
 	}
 
 	due := make([]*Round, 0)
 	for _, kv := range kvs {
-		var round Round
-		if err := json.Unmarshal(kv.Value, &round); err != nil {
+		round, err := r.Round(string(kv.Value))
+		if err != nil {
 			return nil, err
 		}
 		if round.Status == RoundStatusOpen && round.ScheduledCloseAt != nil && !now.Before(*round.ScheduledCloseAt) {
-			due = append(due, &round)
+			due = append(due, round)
 		}
 	}
 	return due, nil

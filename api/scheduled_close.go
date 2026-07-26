@@ -22,7 +22,17 @@ const defaultScheduledCloseInterval = time.Hour
 // Finalized text, then indexed for search. Runs for the life of the
 // process; ctx is only there so a future caller could cancel it, nothing
 // in main currently does.
-func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index *searchIndexer, interval time.Duration) {
+//
+// isLeader is nil in single-node mode, where this is the only process that
+// could possibly run it. In cluster mode every node runs this same loop —
+// there's no separate scheduler process — so main passes a closure here
+// that's true only on one deterministically-chosen node (see main.go's
+// wiring), otherwise every node would redundantly re-scan the same
+// replicated data and could race each other to close the same round.
+// Re-checked every tick rather than once at startup, so leadership follows
+// the node set as it changes instead of freezing whoever happened to be
+// first when this process started.
+func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index *searchIndexer, interval time.Duration, isLeader func() bool) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -31,6 +41,9 @@ func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index 
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if isLeader != nil && !isLeader() {
+				continue
+			}
 			due, err := repo.DueScheduledRounds(time.Now())
 			if err != nil {
 				log.Printf("scheduled close worker: listing due rounds: %v", err)

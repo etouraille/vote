@@ -57,7 +57,7 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	go runScheduledCloseWorker(ctx, repo, index, 20*time.Millisecond)
+	go runScheduledCloseWorker(ctx, repo, index, 20*time.Millisecond, nil)
 
 	deadline := time.Now().Add(800 * time.Millisecond)
 	for time.Now().Before(deadline) {
@@ -74,4 +74,55 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 	if _, err := repo.CurrentRound(futureText.ID); err != nil {
 		t.Fatalf("expected the future-scheduled round to still be open, got err=%v", err)
 	}
+}
+
+// TestRunScheduledCloseWorkerRespectsIsLeader is the cluster-mode half:
+// a node that isn't the elected leader (see main.go's isScheduledCloseLeader)
+// must never close anything, no matter how overdue — otherwise every node
+// in the cluster would redundantly race to close the same rounds.
+func TestRunScheduledCloseWorkerRespectsIsLeader(t *testing.T) {
+	engine, err := queel.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	repo := queel.NewRepository(engine)
+
+	text, err := repo.CreateText("Due", "Contenu a modifier.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ProposeEdit(text.ID, 0, len("Contenu"), "Contenu modifie", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	index := newSearchIndexer(noopEmbedder{}, newQdrantClient("http://127.0.0.1:1", "test"), false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	notLeader := func() bool { return false }
+	runScheduledCloseWorker(ctx, repo, index, 20*time.Millisecond, notLeader)
+
+	if _, err := repo.CurrentRound(text.ID); err != nil {
+		t.Fatalf("a non-leader must never close a round, even an overdue one, got err=%v", err)
+	}
+
+	// Now let it win the "election" and confirm the exact same overdue
+	// round it just ignored gets closed as soon as it is the leader.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel2()
+	isLeader := func() bool { return true }
+	go runScheduledCloseWorker(ctx2, repo, index, 20*time.Millisecond, isLeader)
+
+	deadline := time.Now().Add(800 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if _, err := repo.CurrentRound(text.ID); errors.Is(err, queel.ErrNotFound) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected the round to close once this worker became the leader")
 }
