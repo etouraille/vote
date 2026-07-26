@@ -36,11 +36,11 @@
         <div class="grid grid-cols-2 gap-4">
           @for (card of recentTexts(); track card.id) {
             <div class="group relative h-40 overflow-hidden rounded-lg border border-slate-200 p-4">
-              <h3 class="truncate text-sm font-semibold text-slate-900">{{ card.title }}</h3>
-              <p class="mt-2 line-clamp-5 text-xs text-slate-500">{{ card.excerpt }}</p>
+              <h3 class="truncate text-sm font-semibold text-slate-900 transition duration-200 group-hover:opacity-40">{{ card.title }}</h3>
+              <p class="mt-2 line-clamp-5 text-xs text-slate-500 transition duration-200 group-hover:opacity-40">{{ card.excerpt }}</p>
 
               <div
-                class="absolute inset-0 hidden flex-col items-center justify-center gap-2 bg-white/95 group-hover:flex"
+                class="absolute inset-0 flex flex-col items-center justify-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100"
               >
                 <a
                   [routerLink]="['/editor']"
