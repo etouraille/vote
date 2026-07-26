@@ -34,14 +34,17 @@
 // during a partition or disk loss that nobody happens to read again, which
 // quorum reads' read-repair alone never would.
 //
-// Before deliberately taking a clustered node out of service, POST to its
-// internal /internal/decommission first (see cluster.Decommission): it
-// hands off, to whichever nodes will inherit responsibility for them, every
-// key this node holds that the *other* nodes don't already have an
-// equally-or-more-recent copy of. Only stop the process afterward — doing
-// that first means the cluster never dips below its replication factor
-// even briefly, unlike an unplanned crash, which leans on the anti-entropy
-// job above to notice and repair after the fact instead.
+// Before deliberately taking a clustered node out of service, its data
+// should be handed off first (see cluster.Decommission): to whichever nodes
+// will inherit responsibility for them, every key this node holds that the
+// *other* nodes don't already have an equally-or-more-recent copy of.
+// Doing that before the process actually stops means the cluster never
+// dips below its replication factor even briefly, unlike an unplanned
+// crash, which leans on the anti-entropy job above to notice and repair
+// after the fact instead. This happens automatically on a graceful stop
+// (see cluster.DecommissionOnShutdown, which traps SIGTERM/SIGINT) — the
+// internal /internal/decommission endpoint remains available to trigger it
+// by hand ahead of time instead.
 package main
 
 import (
@@ -106,6 +109,16 @@ func main() {
 			log.Fatal(err)
 		}
 		go cluster.RunAntiEntropy(context.Background(), engine, membership, self, antiEntropyInterval, cluster.DefaultAntiEntropyBuckets)
+
+		// See cluster.DecommissionOnShutdown's doc comment: turns a
+		// graceful stop (SIGTERM/SIGINT) into an automatic decommission,
+		// so /internal/decommission above no longer has to be called by
+		// hand for the common case.
+		decommissionTimeout, err := bootstrap.DecommissionTimeoutFromEnv()
+		if err != nil {
+			log.Fatal(err)
+		}
+		cluster.DecommissionOnShutdown(engine, membership, self, replicationFactor, decommissionTimeout)
 
 		store = cluster.NewDistributedStore(coordinator)
 	}

@@ -38,6 +38,11 @@ const (
 	// HTTP routes itself — see the package doc). Callers read this value
 	// with AntiEntropyIntervalFromEnv and start that job on their own.
 	EnvAntiEntropyInterval = "QUEEL_ANTI_ENTROPY_INTERVAL"
+
+	// EnvDecommissionTimeout is read by DecommissionTimeoutFromEnv, for the
+	// same reason EnvAntiEntropyInterval isn't read by Join itself — see
+	// cluster.DecommissionOnShutdown, which is what actually consumes it.
+	EnvDecommissionTimeout = "QUEEL_DECOMMISSION_TIMEOUT"
 )
 
 // DefaultReplicationFactor and DefaultGossipInterval apply whenever a
@@ -195,6 +200,22 @@ func ReplicationFactorFromEnv() (int, error) {
 	parsed, err := strconv.Atoi(v)
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s: %w", EnvReplicationFactor, err)
+	}
+	return parsed, nil
+}
+
+// DecommissionTimeoutFromEnv reads EnvDecommissionTimeout, defaulting to
+// cluster.DefaultDecommissionTimeout if unset. Only meaningful once a
+// caller has already started cluster.DecommissionOnShutdown — same
+// division of responsibility as AntiEntropyIntervalFromEnv.
+func DecommissionTimeoutFromEnv() (time.Duration, error) {
+	v := os.Getenv(EnvDecommissionTimeout)
+	if v == "" {
+		return cluster.DefaultDecommissionTimeout, nil
+	}
+	parsed, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", EnvDecommissionTimeout, err)
 	}
 	return parsed, nil
 }

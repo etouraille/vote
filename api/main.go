@@ -84,6 +84,19 @@ func main() {
 		}
 		go cluster.RunAntiEntropy(context.Background(), queelEngine, membership, self, antiEntropyInterval, cluster.DefaultAntiEntropyBuckets)
 
+		// Turns a graceful stop (docker stop, kubectl delete pod,
+		// systemctl stop — anything that sends SIGTERM before escalating
+		// to SIGKILL) into an automatic cluster.Decommission instead of
+		// depending on an operator to POST /internal/decommission by hand
+		// first. See cluster.DecommissionOnShutdown's doc comment for what
+		// it can't catch (SIGKILL, a crash) — anti-entropy above remains
+		// the safety net for those.
+		decommissionTimeout, err := bootstrap.DecommissionTimeoutFromEnv()
+		if err != nil {
+			log.Fatalf("decommission timeout: %v", err)
+		}
+		cluster.DecommissionOnShutdown(queelEngine, membership, self, replicationFactor, decommissionTimeout)
+
 		queelStore = cluster.NewDistributedStore(coordinator)
 	}
 	textRepo := queel.NewRepository(queelStore)
