@@ -219,6 +219,15 @@ func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
 // reports the round that produced it, rather than looking indistinguishable
 // from one that never had a round at all. 0 means no round has ever been
 // opened on that text.
+//
+// Results already superseded by a newer fork (queel.Repository.IsSuperseded
+// — i.e. a version of this text with a strictly higher round count exists
+// elsewhere in its chain) are dropped rather than returned: without
+// SEARCH_PRUNE_SUPERSEDED, every closed round leaves its pre-round version
+// indexed too (see IndexFinalizedText's doc comment), and even with it on,
+// that removal is best-effort at index time. Filtering here instead means
+// the search bar only ever shows the current head of each version chain
+// regardless of that setting or whether a prune attempt happened to fail.
 func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
@@ -234,15 +243,26 @@ func searchTextsHandler(index *searchIndexer, repo *queel.Repository) http.Handl
 			return
 		}
 
-		for i, result := range results {
+		current := make([]SearchResult, 0, len(results))
+		for _, result := range results {
+			superseded, err := repo.IsSuperseded(result.TextID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "erreur serveur")
+				return
+			}
+			if superseded {
+				continue
+			}
+
 			count, err := repo.RoundCount(result.TextID)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "erreur serveur")
 				return
 			}
-			results[i].RoundNumber = count
+			result.RoundNumber = count
+			current = append(current, result)
 		}
 
-		writeJSON(w, http.StatusOK, results)
+		writeJSON(w, http.StatusOK, current)
 	}
 }

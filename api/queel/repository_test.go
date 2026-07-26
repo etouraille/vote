@@ -511,6 +511,56 @@ func TestCloseRoundNoOpenRound(t *testing.T) {
 	}
 }
 
+func TestIsSupersededFalseForANeverClosedText(t *testing.T) {
+	repo := newTestRepository(t)
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	superseded, err := repo.IsSuperseded(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if superseded {
+		t.Fatal("a text nobody has ever closed a round on must not be reported superseded")
+	}
+}
+
+func TestIsSupersededAfterCloseRound(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end := runeRange(content, "francais")
+	if _, err := repo.ProposeEdit(text.ID, start, end, "français", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := repo.CloseRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	superseded, err := repo.IsSuperseded(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !superseded {
+		t.Fatal("expected the original text to be superseded once its round closed and forked it")
+	}
+
+	// The fork itself is the current head of the chain — not superseded by
+	// anything, until a round closes on it too.
+	forkSuperseded, err := repo.IsSuperseded(outcome.Text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forkSuperseded {
+		t.Fatal("the newly forked text must not itself be reported superseded")
+	}
+}
+
 func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."

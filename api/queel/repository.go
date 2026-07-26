@@ -318,6 +318,20 @@ func (r *Repository) RoundCount(textID string) (int, error) {
 	return strconv.Atoi(string(value))
 }
 
+// IsSuperseded reports whether a round has already closed on textID and
+// forked it into a newer version (see Text.PreviousTextID, ErrTextSuperseded)
+// — i.e. whether a version of this text with a strictly higher round count
+// now exists elsewhere in its chain. Used to filter search results down to
+// just the current head of each version chain, hiding whichever earlier
+// versions a round has since superseded.
+func (r *Repository) IsSuperseded(textID string) (bool, error) {
+	_, found, err := r.store.Get(supersededByKey(textID))
+	if err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
 // TextWithSlots fetches a text together with the slots of its current
 // round, if any. A text with no open round (never edited yet, or its last
 // round already closed) isn't an error case here — it's reported as
