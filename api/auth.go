@@ -184,6 +184,160 @@ func issueToken(rbacStore *rbac.Store, jwtSecret []byte, user *User) (token stri
 	return token, expiresAt, perms, root, nil
 }
 
+type googleAuthRequest struct {
+	IDToken string `json:"idToken"`
+	// Pseudo is required only the first time a given Google account signs
+	// in (no existing user matches its email yet) — see
+	// createUserFromGoogleSignIn.
+	Pseudo string `json:"pseudo,omitempty"`
+}
+
+type needsPseudoResponse struct {
+	NeedsPseudo bool `json:"needsPseudo"`
+}
+
+// googleLoginHandler signs a caller in via "Sign in with Google": idToken
+// is verified against Google's own signing keys (rbac.VerifyGoogleIDToken)
+// rather than trusted at face value, so this never has to take the
+// client's word for who they are — only Google's.
+//
+// An existing account (created here before, or through ordinary
+// email+password registration sharing the same email) is just signed in —
+// Google having verified that email is exactly the guarantee a clicked
+// confirmation-email link gives register/confirmHandler. A first-time
+// account (no user with this Google account's email yet) needs pseudo,
+// which Google's identity doesn't supply; omitting it gets a
+// needsPseudoResponse back instead of creating anything, so the front end
+// can prompt for one and retry with the same idToken plus that pseudo.
+func googleLoginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte, googleClientID string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req googleAuthRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "corps de requête invalide")
+			return
+		}
+
+		identity, err := rbac.VerifyGoogleIDToken(req.IDToken, googleClientID)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "jeton Google invalide")
+			return
+		}
+		if !identity.EmailVerified {
+			writeError(w, http.StatusForbidden, "l'email de ce compte Google n'est pas vérifié")
+			return
+		}
+
+		user, err := store.UserByEmail(r.Context(), identity.Email)
+		if errors.Is(err, ErrUserNotFound) {
+			created, ok := createUserFromGoogleSignIn(w, r, store, rbacStore, identity.Email, req.Pseudo)
+			if !ok {
+				return // createUserFromGoogleSignIn already wrote the response (error or needsPseudo)
+			}
+			user = created
+		} else if err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		token, expiresAt, perms, root, err := issueToken(rbacStore, jwtSecret, user)
+		if err != nil {
+			log.Printf("issuing token for %s via google: %v", user.Email, err)
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		var pseudo string
+		if user.Pseudo != nil {
+			pseudo = *user.Pseudo
+		}
+		writeJSON(w, http.StatusOK, sessionResponse{
+			Token:       token,
+			ExpiresAt:   expiresAt.Format(time.RFC3339),
+			UserID:      user.ID,
+			Email:       user.Email,
+			Pseudo:      pseudo,
+			Root:        root,
+			Permissions: perms,
+		})
+	}
+}
+
+// createUserFromGoogleSignIn handles googleLoginHandler's "no existing user
+// for this email" branch. A missing/blank pseudo writes needsPseudoResponse
+// and reports ok=false rather than an error — the caller is expected to
+// retry with the same idToken plus a pseudo once the front end has prompted
+// for one — so ok=false does not always mean something went wrong.
+//
+// A newly created Google account gets CanVote-only rbac permissions
+// immediately (unlike a fresh password registration, which starts with
+// none until an admin assigns some — see admin.go), since there's no
+// separate vetting step left to wait for once Google's already confirmed
+// the email.
+func createUserFromGoogleSignIn(w http.ResponseWriter, r *http.Request, store *Store, rbacStore *rbac.Store, email, rawPseudo string) (user *User, ok bool) {
+	pseudo := strings.TrimSpace(rawPseudo)
+	if pseudo == "" {
+		writeJSON(w, http.StatusOK, needsPseudoResponse{NeedsPseudo: true})
+		return nil, false
+	}
+	if utf8.RuneCountInString(pseudo) > maxPseudoRunes {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("le pseudo ne doit pas dépasser %d caractères", maxPseudoRunes))
+		return nil, false
+	}
+
+	unusablePassword, err := randomUnusablePasswordHash()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "erreur serveur")
+		return nil, false
+	}
+
+	created, err := store.CreateUserFromGoogle(r.Context(), email, unusablePassword, pseudo)
+	if errors.Is(err, ErrEmailTaken) {
+		// Lost a race with a concurrent Google sign-in for the same email
+		// between UserByEmail and here — proceed with whichever account
+		// won it, exactly as if it had been found the first time around.
+		created, err = store.UserByEmail(r.Context(), email)
+		if err == nil && created.RbacUUID != nil {
+			// The winner's own flow already assigned rbac permissions —
+			// nothing left to do (avoids creating a second, orphaned rbac
+			// entry and overwriting theirs with it below).
+			return created, true
+		}
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "erreur serveur")
+		return nil, false
+	}
+
+	rbacUser, err := rbacStore.CreateUser(false, rbac.Permissions{CanVote: true})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "erreur serveur")
+		return nil, false
+	}
+	if err := store.SetRbacUUID(r.Context(), created.ID, rbacUser.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "erreur serveur")
+		return nil, false
+	}
+	created.RbacUUID = &rbacUser.ID
+
+	return created, true
+}
+
+// randomUnusablePasswordHash is stored in place of a real password for a
+// Google-created account: nobody knows the random bytes it's derived from,
+// so bcrypt.CompareHashAndPassword against it in loginHandler correctly
+// always fails, rather than leaving the password column nullable.
+func randomUnusablePasswordHash() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	hash, err := bcrypt.GenerateFromPassword(raw, bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
 type confirmRequest struct {
 	Email string `json:"email"`
 	Code  int    `json:"code"`

@@ -61,6 +61,29 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash string, vali
 	return &User{ID: id, Email: email, PasswordHash: passwordHash, ValidationCode: &validationCode, Pseudo: pseudoPtr}, nil
 }
 
+// CreateUserFromGoogle registers a new account for a Google sign-in that
+// has no existing match by email (see googleLoginHandler) — auto-confirmed
+// since Google already proved this address belongs to them, so
+// validation_code stays NULL rather than going through the usual email
+// confirmation step. passwordHash should be an unusable random value
+// (nobody knows it — see randomUnusablePasswordHash) rather than a real
+// password, since Google accounts don't have one.
+func (s *Store) CreateUserFromGoogle(ctx context.Context, email, passwordHash, pseudo string) (*User, error) {
+	id := newRandomHex(8)
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (id, email, password, validation_code, pseudo) VALUES ($1, $2, $3, NULL, $4)`,
+		id, email, passwordHash, pseudo,
+	)
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return nil, ErrEmailTaken
+		}
+		return nil, err
+	}
+	return &User{ID: id, Email: email, PasswordHash: passwordHash, Pseudo: &pseudo}, nil
+}
+
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
 	return err

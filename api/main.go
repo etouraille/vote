@@ -196,6 +196,13 @@ func main() {
 	mux.HandleFunc("POST /api/auth/register", registerHandler(store))
 	mux.HandleFunc("POST /api/auth/login", loginHandler(store, rbacStore, []byte(jwtSecret)))
 	mux.HandleFunc("POST /api/auth/confirm", confirmHandler(store))
+	// Optional: only mounted once GOOGLE_CLIENT_ID is configured (see
+	// .env.example) — "Sign in with Google" simply isn't offered until
+	// then, same graceful-degradation approach as Qdrant/Ollama/Brevo
+	// above rather than refusing to start without it.
+	if googleClientID := os.Getenv("GOOGLE_CLIENT_ID"); googleClientID != "" {
+		mux.HandleFunc("POST /api/auth/google", googleLoginHandler(store, rbacStore, []byte(jwtSecret), googleClientID))
+	}
 	mux.HandleFunc("GET /api/me", meHandler(store))
 	mux.HandleFunc("GET /api/admin/users", listUsersHandler(store, rbacStore))
 	mux.HandleFunc("PUT /api/admin/users/{id}/permissions", assignPermissionsHandler(store, rbacStore))

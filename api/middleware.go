@@ -32,6 +32,7 @@ var publicAPIPaths = map[string]bool{
 	"/api/auth/register": true,
 	"/api/auth/login":    true,
 	"/api/auth/confirm":  true,
+	"/api/auth/google":   true,
 }
 
 // requireToken verifies the bearer JWT on every /api request other than

@@ -6,6 +6,10 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- Google Identity Services — renders the "Sign in with Google" button
+       on the login page (see login.ts) and hands it a signed ID token; see
+       google-client-id.ts for the client ID it's initialized with. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <app-root></app-root>

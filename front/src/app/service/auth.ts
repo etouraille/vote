@@ -3,7 +3,16 @@ import { Service, computed, inject, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { API_BASE_URL } from '../api-base-url';
-import { AuthResponse, AuthTokens, LoginCredentials, RegisterAck, RegisterCredentials, User } from '../model/auth.model';
+import {
+  AuthResponse,
+  AuthTokens,
+  GoogleAuthNeedsPseudo,
+  GoogleAuthResult,
+  LoginCredentials,
+  RegisterAck,
+  RegisterCredentials,
+  User,
+} from '../model/auth.model';
 import { MeResponse } from '../model/admin.model';
 import { TokenStorage } from './token-storage';
 
@@ -63,6 +72,28 @@ export class AuthService {
 
   register(credentials: RegisterCredentials): Observable<RegisterAck> {
     return this.http.post<RegisterAck>(`${API_BASE_URL}/api/auth/register`, credentials);
+  }
+
+  // "Sign in with Google": idToken is what Google's identity library hands
+  // back after the user picks an account (see login.ts). pseudo only
+  // matters the first time a given Google account signs in — api returns
+  // GoogleAuthNeedsPseudo instead of a session when it's needed and wasn't
+  // given, without creating anything; the caller (login.ts) is expected to
+  // prompt for one and call this again with the same idToken plus that
+  // pseudo.
+  googleLogin(idToken: string, pseudo?: string): Observable<GoogleAuthNeedsPseudo | User> {
+    return this.http.post<GoogleAuthResult>(`${API_BASE_URL}/api/auth/google`, { idToken, pseudo }).pipe(
+      map((response) => {
+        if ('needsPseudo' in response) {
+          return response;
+        }
+        const { user, tokens } = this.toSession(response);
+        this.tokenStorage.write(tokens);
+        this._tokens.set(tokens);
+        this._user.set(user);
+        return user;
+      }),
+    );
   }
 
   // Who the caller is and what they're allowed to do, straight from their
