@@ -40,19 +40,19 @@
         <div class="max-h-[26rem] snap-y snap-proximity overflow-y-auto pr-1" (scroll)="onRecentTextsScroll($event)">
           <div class="grid grid-cols-2 gap-4">
           @for (card of recentTexts(); track card.textId) {
-            <div class="group relative h-40 snap-start overflow-hidden rounded-lg border border-slate-200 p-4">
-              <h3 class="truncate text-sm font-semibold text-slate-900 transition duration-200 group-hover:opacity-40">{{ card.title }}</h3>
-              <p class="mt-2 line-clamp-5 text-xs text-slate-500 transition duration-200 group-hover:opacity-40">{{ card.excerpt }}</p>
+            <div class="group relative h-56 snap-start overflow-hidden rounded-lg border border-slate-200 p-5">
+              <h3 class="truncate pr-16 text-base font-semibold text-slate-900">{{ card.title }}</h3>
+              <p class="mt-2 line-clamp-6 pr-16 text-sm text-slate-500">{{ card.excerpt }}</p>
 
               <div
-                class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 opacity-0 transition duration-200 group-hover:opacity-100"
+                class="absolute top-2 right-2 flex flex-col items-end gap-1.5 opacity-0 transition duration-200 group-hover:opacity-100"
               >
                 @if (!card.subscribed) {
                   <button
                     type="button"
                     (click)="subscribe(card)"
                     [disabled]="subscribingTextId() === card.textId"
-                    class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm disabled:opacity-50"
                   >
                     {{ subscribingTextId() === card.textId ? 'Abonnement…' : "S'abonner" }}
                   </button>
@@ -61,7 +61,7 @@
                     <a
                       [routerLink]="['/editor']"
                       [queryParams]="{ id: card.textId }"
-                      class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+                      class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
                     >
                       Éditer
                     </a>
@@ -70,20 +70,20 @@
                     <a
                       [routerLink]="['/vote']"
                       [queryParams]="{ id: card.textId }"
-                      class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
+                      class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
                     >
                       Voter
                     </a>
                   }
                   @if (canCloseText()) {
                     @if (closedTextIds().has(card.textId)) {
-                      <span class="rounded-md bg-white px-3 py-1.5 text-xs text-emerald-600">Round clos</span>
+                      <span class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-emerald-600 shadow-sm">Round clos</span>
                     } @else {
                       <button
                         type="button"
                         (click)="openCloseRoundPopup(card)"
                         [disabled]="closingTextId() === card.textId"
-                        class="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+                        class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm disabled:opacity-50"
                       >
                         {{ closingTextId() === card.textId ? 'Clôture…' : 'Clore un round' }}
                       </button>
@@ -94,7 +94,7 @@
                       type="button"
                       (click)="deleteText(card)"
                       [disabled]="deletingTextId() === card.textId"
-                      class="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
+                      class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm disabled:opacity-50"
                     >
                       {{ deletingTextId() === card.textId ? 'Suppression…' : 'Supprimer' }}
                     </button>
