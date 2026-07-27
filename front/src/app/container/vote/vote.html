@@ -26,21 +26,36 @@
             }
             @for (fv of group.fragments; track fv.fragment.id) {
               <div class="group relative border-t border-slate-100 pt-6 first:border-t-0 first:pt-0">
-                <p class="leading-relaxed whitespace-pre-wrap text-slate-900">
-                  @for (token of fv.diff; track $index) {
-                    @switch (token.type) {
-                      @case ('removed') {
-                        <span class="bg-red-100 text-red-800 line-through">{{ token.text }}</span>
-                      }
-                      @case ('added') {
-                        <span class="bg-green-100 text-green-800">{{ token.text }}</span>
-                      }
-                      @default {
-                        <span>{{ token.text }}</span>
+                <div class="flex flex-col gap-1">
+                  <!-- Original wording: every word this proposal keeps, plus the
+                       ones it removes struck through in place — reads as one
+                       complete, natural sentence instead of interleaving it with
+                       the proposed wording below. -->
+                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900">
+                    @for (token of fv.diff; track $index) {
+                      @if (token.type !== 'added') {
+                        @if (token.type === 'removed') {
+                          <span class="bg-red-100 text-red-800 line-through">{{ token.text }}</span>
+                        } @else {
+                          <span>{{ token.text }}</span>
+                        }
                       }
                     }
-                  }
-                </p>
+                  </p>
+                  <!-- Proposed wording: same idea, mirrored — every kept word
+                       plus this proposal's additions highlighted in place. -->
+                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900">
+                    @for (token of fv.diff; track $index) {
+                      @if (token.type !== 'removed') {
+                        @if (token.type === 'added') {
+                          <span class="bg-green-100 text-green-800">{{ token.text }}</span>
+                        } @else {
+                          <span>{{ token.text }}</span>
+                        }
+                      }
+                    }
+                  </p>
+                </div>
 
                 @if (canVote()) {
                   <div
