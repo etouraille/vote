@@ -204,9 +204,15 @@ type needsPseudoResponse struct {
 // An existing account (created here before, or through ordinary
 // email+password registration sharing the same email) is just signed in —
 // Google having verified that email is exactly the guarantee a clicked
-// confirmation-email link gives register/confirmHandler. A first-time
-// account (no user with this Google account's email yet) needs pseudo,
-// which Google's identity doesn't supply; omitting it gets a
+// confirmation-email link gives register/confirmHandler. Whatever rbac
+// permissions (or none, or root) that account already has are left
+// completely alone: the only place this handler ever touches rbac is
+// createUserFromGoogleSignIn below, which is only reached when no user
+// matches the email at all — an existing account never passes through it,
+// no matter what its current rights are.
+//
+// A first-time account (no user with this Google account's email yet)
+// needs pseudo, which Google's identity doesn't supply; omitting it gets a
 // needsPseudoResponse back instead of creating anything, so the front end
 // can prompt for one and retry with the same idToken plus that pseudo.
 func googleLoginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte, googleClientID string) http.HandlerFunc {
