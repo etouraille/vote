@@ -31,11 +31,14 @@
                        ones it removes struck through in place — reads as one
                        complete, natural sentence instead of interleaving it with
                        the proposed wording below. -->
-                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900">
+                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900 transition-colors group-hover:text-slate-300">
                     @for (token of fv.diff; track $index) {
                       @if (token.type !== 'added') {
                         @if (token.type === 'removed') {
-                          <span class="bg-red-100 text-red-800 line-through">{{ token.text }}</span>
+                          <span
+                            class="rounded bg-red-100 text-red-800 line-through transition-colors group-hover:bg-red-50 group-hover:text-red-200"
+                            >{{ token.text }}</span
+                          >
                         } @else {
                           <span>{{ token.text }}</span>
                         }
@@ -44,11 +47,14 @@
                   </p>
                   <!-- Proposed wording: same idea, mirrored — every kept word
                        plus this proposal's additions highlighted in place. -->
-                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900">
+                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900 transition-colors group-hover:text-slate-300">
                     @for (token of fv.diff; track $index) {
                       @if (token.type !== 'removed') {
                         @if (token.type === 'added') {
-                          <span class="bg-green-100 text-green-800">{{ token.text }}</span>
+                          <span
+                            class="rounded bg-green-100 text-green-800 transition-colors group-hover:bg-green-50 group-hover:text-green-200"
+                            >{{ token.text }}</span
+                          >
                         } @else {
                           <span>{{ token.text }}</span>
                         }
@@ -58,9 +64,7 @@
                 </div>
 
                 @if (canVote()) {
-                  <div
-                    class="absolute inset-0 hidden items-center justify-center gap-3 bg-white/95 group-hover:flex"
-                  >
+                  <div class="absolute inset-0 hidden items-center justify-center gap-3 group-hover:flex">
                     <button
                       type="button"
                       (click)="vote(group, group.seedFragmentId)"
