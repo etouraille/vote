@@ -14,89 +14,76 @@
   } @else if (slotGroups().length === 0) {
     <p class="mt-6 text-sm text-slate-500">Aucun round n'est actuellement ouvert pour ce texte.</p>
   } @else {
-    <div class="mt-6 flex flex-col gap-10">
-      @for (group of slotGroups(); track group.slot.id) {
-        <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 class="text-sm font-medium text-slate-500">Extrait original</h2>
-          <p class="mt-2 whitespace-pre-wrap text-sm text-slate-600">{{ group.original }}</p>
+    <section class="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <!-- The whole text, reconstructed once — every slot shown in place
+           rather than one repeated card per slot — with only its original
+           wording struck through. Never interactive: voting for the
+           original is offered alongside each proposal's own popup below. -->
+      <h2 class="text-sm font-medium text-slate-500">Valeurs initiales</h2>
+      <p class="mt-2 whitespace-pre-wrap leading-relaxed text-slate-900">
+        @for (seg of segments(); track $index) {
+          @if (seg.kind === 'plain') {{{ seg.text }}} @else {<span
+              class="rounded bg-red-100 px-1 text-red-800 line-through"
+              >{{ seg.group.original }}</span
+            >}
+        }
+      </p>
 
-          <div class="mt-6 flex flex-col gap-6">
-            @if (group.fragments.length === 0) {
-              <p class="text-sm text-slate-400">Aucune proposition pour l'instant.</p>
-            }
-            @for (fv of group.fragments; track fv.fragment.id) {
-              <div class="group relative border-t border-slate-100 pt-6 first:border-t-0 first:pt-0">
-                <div class="flex flex-col gap-1">
-                  <!-- Original wording: every word this proposal keeps, plus the
-                       ones it removes struck through in place — reads as one
-                       complete, natural sentence instead of interleaving it with
-                       the proposed wording below. -->
-                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900 transition-colors group-hover:text-slate-300">
-                    @for (token of fv.diff; track $index) {
-                      @if (token.type !== 'added') {
-                        @if (token.type === 'removed') {
-                          <span
-                            class="rounded bg-red-100 text-red-800 line-through transition-colors group-hover:bg-red-50 group-hover:text-red-200"
-                            >{{ token.text }}</span
-                          >
-                        } @else {
-                          <span>{{ token.text }}</span>
-                        }
-                      }
-                    }
-                  </p>
-                  <!-- Proposed wording: same idea, mirrored — every kept word
-                       plus this proposal's additions highlighted in place. -->
-                  <p class="leading-relaxed whitespace-pre-wrap text-slate-900 transition-colors group-hover:text-slate-300">
-                    @for (token of fv.diff; track $index) {
-                      @if (token.type !== 'removed') {
-                        @if (token.type === 'added') {
-                          <span
-                            class="rounded bg-green-100 text-green-800 transition-colors group-hover:bg-green-50 group-hover:text-green-200"
-                            >{{ token.text }}</span
-                          >
-                        } @else {
-                          <span>{{ token.text }}</span>
-                        }
-                      }
-                    }
-                  </p>
-                </div>
-
-                @if (canVote()) {
-                  <div class="absolute inset-0 hidden items-center justify-center gap-3 group-hover:flex">
+      <!-- Same reconstruction, mirrored: each slot shows every competing
+           proposal's word side by side in its place — each is its own hover
+           zone, opening a popup anchored right under that specific word
+           (only these modified segments trigger it, never the line above). -->
+      <h2 class="mt-6 text-sm font-medium text-slate-500">Valeurs modifiées</h2>
+      <p class="mt-2 whitespace-pre-wrap leading-relaxed text-slate-900">
+        @for (seg of segments(); track $index) {
+          @if (seg.kind === 'plain') {{{ seg.text }}} @else if (seg.group.fragments.length === 0) {{{ seg.group.original }}} @else {
+            @for (fv of seg.group.fragments; track fv.fragment.id; let last = $last) {<span
+                class="relative inline-block"
+                ><span
+                  class="cursor-pointer rounded bg-green-100 px-1 text-green-800"
+                  (mouseenter)="fv.hovering.set(true)"
+                  (mouseleave)="fv.hovering.set(false)"
+                  >{{ fv.fragment.content }}</span
+                >@if (canVote()) {<span
+                    class="absolute left-1/2 top-full z-10 mt-1 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white p-2 shadow-lg"
+                    [class.hidden]="!fv.hovering()"
+                    (mouseenter)="fv.hovering.set(true)"
+                    (mouseleave)="fv.hovering.set(false)"
+                  >
                     <button
                       type="button"
-                      (click)="vote(group, group.seedFragmentId)"
-                      [disabled]="group.voting() || !group.seedFragmentId"
+                      (click)="vote(seg.group, seg.group.seedFragmentId)"
+                      [disabled]="seg.group.voting() || !seg.group.seedFragmentId"
                       class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                     >
                       Voter pour le texte original
                     </button>
                     <button
                       type="button"
-                      (click)="vote(group, fv.fragment.id)"
-                      [disabled]="group.voting()"
+                      (click)="vote(seg.group, fv.fragment.id)"
+                      [disabled]="seg.group.voting()"
                       class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                     >
                       Voter pour la modification
                     </button>
-                  </div>
-                }
-              </div>
-            }
-          </div>
+                  </span
+                >}</span
+              >{{ !last ? ' / ' : '' }}}
+          }
+        }
+      </p>
 
-          @if (group.votedFragmentId(); as votedId) {
-            <p class="mt-4 text-xs text-emerald-700">
-              Vote enregistré pour {{ votedId === group.seedFragmentId ? 'le texte original' : 'la modification' }}.
-            </p>
-          }
-          @if (group.error(); as error) {
-            <p class="mt-2 text-xs text-red-600">{{ error }}</p>
-          }
-        </section>
+      @for (group of slotGroups(); track group.slot.id) {
+        @if (group.votedFragmentId(); as votedId) {
+          <p class="mt-4 text-xs text-emerald-700">
+            « {{ group.original }} » : vote enregistré pour
+            {{ votedId === group.seedFragmentId ? 'le texte original' : 'la modification' }}.
+          </p>
+        }
+        @if (group.error(); as error) {
+          <p class="mt-2 text-xs text-red-600">« {{ group.original }} » : {{ error }}</p>
+        }
       }
-    </div>
+    </section>
   }
 </div>
