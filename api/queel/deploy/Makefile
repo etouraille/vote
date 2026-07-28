@@ -7,7 +7,10 @@ BINARY := vote-api-cluster
 ENV := ../../.env
 NODES := node1 node2 node3
 
-.PHONY: build build-api up down restart status clean
+.PHONY: build build-api up down kill-node kill-all restart status clean
+
+# How long kill-all waits between one node's SIGTERM and the next's.
+KILL_DELAY ?= 5
 
 build:
 	cd ../.. && go build -o queel/deploy/$(BINARY) .
@@ -42,9 +45,40 @@ up: build
 
 down:
 	@for n in $(NODES); do \
-		if [ -f $$n.pid ]; then kill $$(cat $$n.pid) 2>/dev/null || true; rm -f $$n.pid; fi; \
+		if [ -f $$n.pid ]; then kill -TERM $$(cat $$n.pid) 2>/dev/null || true; rm -f $$n.pid; fi; \
 	done
 	@echo "cluster stopped"
+
+# kill-node stops a single node with SIGTERM (make kill-node NODE=node3) —
+# unlike `down` (all 3 at once), this is for exercising a single node's
+# graceful departure by hand: SIGTERM is exactly what triggers
+# cluster.DecommissionOnShutdown (see queeld/main.go's doc comment),
+# handing this node's data off to the others before the process actually
+# exits instead of leaving the cluster under-replicated until anti-entropy
+# eventually notices.
+kill-node:
+	@if [ -z "$(NODE)" ]; then echo "usage: make kill-node NODE=node1|node2|node3" >&2; exit 1; fi
+	@if [ -f $(NODE).pid ]; then \
+		kill -TERM $$(cat $(NODE).pid) 2>/dev/null || true; \
+		rm -f $(NODE).pid; \
+		echo "$(NODE): sent SIGTERM"; \
+	else \
+		echo "$(NODE): no pid file (not running?)" >&2; \
+	fi
+
+# kill-all stops every node one at a time (SIGTERM, via kill-node) instead
+# of all at once like `down` — pausing KILL_DELAY seconds between each so a
+# departing node's decommission (see kill-node's doc comment) has time to
+# finish handing its data off to whichever nodes are still alive before the
+# next one leaves too, rather than racing several simultaneous departures
+# against a shrinking set of survivors.
+kill-all:
+	@last=""; for n in $(NODES); do last=$$n; done; \
+	for n in $(NODES); do \
+		$(MAKE) --no-print-directory kill-node NODE=$$n; \
+		if [ "$$n" != "$$last" ]; then sleep $(KILL_DELAY); fi; \
+	done
+	@echo "cluster stopped (one node at a time, $(KILL_DELAY)s apart)"
 
 restart: down up
 
