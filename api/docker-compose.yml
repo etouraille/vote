@@ -34,6 +34,21 @@ services:
     volumes:
       - vote-ollama-data:/root/.ollama
 
+  # Round-robin reverse proxy in front of the 3 local cluster nodes (see
+  # queel/deploy/README.md's "Load balancing" section) — the nodes
+  # themselves run on the host via `make up` in queel/deploy, not in
+  # docker, hence extra_hosts below.
+  lb:
+    image: nginx:alpine
+    container_name: vote-lb
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./queel/deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   vote-postgres-data:
   vote-qdrant-data:

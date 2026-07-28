@@ -82,6 +82,31 @@ Merkle tree, whether or not anyone ever reads those keys again. Wipe a
 node's data dir entirely (`rm -rf node3`) and restart it — it recovers its
 full keyspace from peers within `QUEEL_ANTI_ENTROPY_INTERVAL` on its own.
 
+## Load balancing (nginx, round-robin)
+
+Talking to a node's port directly (above) works, but ties whoever's calling
+to one specific node. `docker-compose.yml` (in `api/`, one level up) has an
+`lb` service — nginx, round-robin across all 3 public ports — for a single
+entry point that doesn't care which node answers:
+
+```bash
+cd ..                 # api/
+docker compose up -d lb
+curl -s http://localhost:8090/healthz
+```
+
+Its config is `nginx.conf` in this directory. The nodes run on the host
+(via `make up`, not in docker), so the upstream block points at
+`host.docker.internal:809N` — `lb`'s `extra_hosts: host.docker.internal:
+host-gateway` in docker-compose.yml is what makes that resolve from inside
+the container. Open-source nginx has no active health checking (that's an
+nginx-plus feature); `max_fails=2 fail_timeout=5s` on each upstream server
+gives passive fault tolerance instead — a node that fails twice within 5s
+is skipped for the next 5s.
+
+This is a local/dev convenience, not a substitute for a real load balancer
+in front of an actual multi-machine deployment — see AMELIORATION.md.
+
 ## Decommissioning a node cleanly
 
 Killing a node outright works (that's what the paragraph above is about),
