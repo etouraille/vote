@@ -137,11 +137,25 @@ export class VotePage implements OnInit {
   // vanishing before the pointer actually arrives.
   private readonly hideTimeouts = new Map<FragmentVote, ReturnType<typeof setTimeout>>();
 
+  // The one fragment whose popup showPopup most recently opened — at most
+  // one should ever be visible at a time. Without this, quickly sweeping
+  // the pointer from one fragment's word straight to another's (skipping
+  // the trip through the first one's own popup) left the first popup's
+  // grace period still pending, so both stayed visible together for a
+  // moment instead of the first vanishing as soon as the second opens.
+  private activeFragment: FragmentVote | null = null;
+
   // Called on mouseenter of either a fragment's word or its own popup —
   // cancels any close already queued by hidePopupSoon, so briefly leaving
-  // one for the other doesn't lose the popup in between.
+  // one for the other doesn't lose the popup in between. Also immediately
+  // closes whichever other fragment's popup was previously open, since
+  // only one is ever meant to be visible at once.
   showPopup(fv: FragmentVote): void {
     this.clearHideTimeout(fv);
+    if (this.activeFragment && this.activeFragment !== fv) {
+      this.hidePopupNow(this.activeFragment);
+    }
+    this.activeFragment = fv;
     fv.hovering.set(true);
   }
 
@@ -152,15 +166,25 @@ export class VotePage implements OnInit {
     this.clearHideTimeout(fv);
     this.hideTimeouts.set(
       fv,
-      setTimeout(() => fv.hovering.set(false), 250),
+      setTimeout(() => {
+        fv.hovering.set(false);
+        if (this.activeFragment === fv) {
+          this.activeFragment = null;
+        }
+      }, 250),
     );
   }
 
-  // Called right after casting a vote — no grace period, the interaction is
-  // already done.
+  // Called right after casting a vote, and to force-close whichever
+  // fragment's popup was open when another one is about to show — no grace
+  // period, either the interaction is already done or another popup is
+  // taking its place.
   hidePopupNow(fv: FragmentVote): void {
     this.clearHideTimeout(fv);
     fv.hovering.set(false);
+    if (this.activeFragment === fv) {
+      this.activeFragment = null;
+    }
   }
 
   private clearHideTimeout(fv: FragmentVote): void {
