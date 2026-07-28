@@ -50,6 +50,13 @@
       <div #googleButton></div>
     </div>
 
+    @if (googleUnavailable()) {
+      <p class="mt-4 text-center text-sm text-slate-500">
+        La connexion Google est indisponible (script Google non chargé — vérifiez la connexion réseau
+        ou un bloqueur de publicités).
+      </p>
+    }
+
     @if (needsPseudoForGoogleSignIn()) {
       <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
         <label class="block text-sm font-medium text-slate-700">
