@@ -17,9 +17,11 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/etouraille/queel"
 	"github.com/etouraille/queel/rbac"
@@ -35,9 +37,12 @@ func NewHandler(repo *queel.Repository, jwtSecret []byte) http.Handler {
 	mux.HandleFunc("GET /texts/{id}", getTextHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/with-slots", textWithSlotsHandler(repo))
 	mux.HandleFunc("PUT /texts/{id}", updateTextHandler(repo, jwtSecret))
+	mux.HandleFunc("DELETE /texts/{id}", deleteTextHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/propose-edit", proposeEditHandler(repo, jwtSecret))
 	mux.HandleFunc("GET /texts/{id}/round", currentRoundHandler(repo))
 	mux.HandleFunc("POST /texts/{id}/close-round", closeRoundHandler(repo, jwtSecret))
+	mux.HandleFunc("POST /texts/{id}/schedule-close", scheduleCloseHandler(repo, jwtSecret))
+	mux.HandleFunc("POST /texts/{id}/subscribe", subscribeHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/slots/{slotId}/fragments", fragmentsHandler(repo))
 	mux.HandleFunc("GET /fragments/{id}", getFragmentHandler(repo))
 	mux.HandleFunc("POST /vote", castVoteHandler(repo, jwtSecret))
@@ -234,6 +239,24 @@ func updateTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFun
 	}
 }
 
+// deleteTextHandler removes a text along with its rounds/fragments/votes/
+// subscriptions — see queel.Repository.DeleteText. Gated by
+// rbac.ActionCreateText, matching api/texts.go's deleteTextHandler: deleting
+// is treated as an extension of authoring rights, not its own permission.
+func deleteTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !checkAction(w, r, jwtSecret, rbac.ActionCreateText) {
+			return
+		}
+
+		if err := repo.DeleteText(r.PathValue("id")); err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 type proposeEditRequest struct {
 	Start    int    `json:"start"`
 	End      int    `json:"end"`
@@ -306,6 +329,78 @@ func closeRoundHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFun
 			return
 		}
 		writeJSON(w, http.StatusOK, outcome)
+	}
+}
+
+// scheduleCloseMaxDays bounds how far out a round's close may be scheduled —
+// mirrors api/slots.go's maxScheduleCloseDays.
+const scheduleCloseMaxDays = 365
+
+type scheduleCloseRequest struct {
+	Days int `json:"days"`
+}
+
+type scheduleCloseResponse struct {
+	ScheduledCloseAt time.Time `json:"scheduledCloseAt"`
+}
+
+// scheduleCloseHandler is the "close in N days" alternative to
+// closeRoundHandler's immediate close — see
+// queel.Repository.ScheduleRoundClose. Mirrors api/slots.go's
+// scheduleCloseHandler.
+func scheduleCloseHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !checkAction(w, r, jwtSecret, rbac.ActionCloseText) {
+			return
+		}
+
+		var req scheduleCloseRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.Days < 1 || req.Days > scheduleCloseMaxDays {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("days must be between 1 and %d", scheduleCloseMaxDays))
+			return
+		}
+
+		closeAt := time.Now().Add(time.Duration(req.Days) * 24 * time.Hour)
+		round, err := repo.ScheduleRoundClose(r.PathValue("id"), closeAt)
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, scheduleCloseResponse{ScheduledCloseAt: *round.ScheduledCloseAt})
+	}
+}
+
+type subscribeRequest struct {
+	UserID string `json:"userId"`
+}
+
+type subscribeResponse struct {
+	Subscribed bool `json:"subscribed"`
+}
+
+// subscribeHandler lets a caller follow a text — see queel.Subscription's
+// doc comment: a personal focus signal, not a permission grant, so unlike
+// the routes above this isn't gated by any rbac.Action. Mirrors
+// api/subscriptions.go's subscribeHandler; since server never derives
+// identity from a token (see the package doc), the caller passes userId
+// directly instead of it coming from JWT claims.
+func subscribeHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req subscribeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if _, err := repo.Subscribe(req.UserID, r.PathValue("id")); err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, subscribeResponse{Subscribed: true})
 	}
 }
 
