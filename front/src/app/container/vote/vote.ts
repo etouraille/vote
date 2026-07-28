@@ -130,6 +130,47 @@ export class VotePage implements OnInit {
     });
   }
 
+  // Pending close-popup timers, keyed by fragment — see showPopup/
+  // hidePopupSoon: closing on mouseleave is delayed rather than immediate,
+  // so moving the pointer from a fragment's word down to its popup (across
+  // the small visual gap between them) doesn't get cut short by the popup
+  // vanishing before the pointer actually arrives.
+  private readonly hideTimeouts = new Map<FragmentVote, ReturnType<typeof setTimeout>>();
+
+  // Called on mouseenter of either a fragment's word or its own popup —
+  // cancels any close already queued by hidePopupSoon, so briefly leaving
+  // one for the other doesn't lose the popup in between.
+  showPopup(fv: FragmentVote): void {
+    this.clearHideTimeout(fv);
+    fv.hovering.set(true);
+  }
+
+  // Called on mouseleave of either a fragment's word or its own popup —
+  // waits a short moment before actually closing instead of closing
+  // immediately, precisely to tolerate that in-between gap.
+  hidePopupSoon(fv: FragmentVote): void {
+    this.clearHideTimeout(fv);
+    this.hideTimeouts.set(
+      fv,
+      setTimeout(() => fv.hovering.set(false), 250),
+    );
+  }
+
+  // Called right after casting a vote — no grace period, the interaction is
+  // already done.
+  hidePopupNow(fv: FragmentVote): void {
+    this.clearHideTimeout(fv);
+    fv.hovering.set(false);
+  }
+
+  private clearHideTimeout(fv: FragmentVote): void {
+    const pending = this.hideTimeouts.get(fv);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.hideTimeouts.delete(fv);
+    }
+  }
+
   // Walks slots left to right (queel guarantees they never overlap within a
   // round), interleaving the plain document text that falls between/around
   // them — so the template can render one continuous reconstructed sentence
