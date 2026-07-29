@@ -20,4 +20,18 @@ class Endpoints {
 
   /// The texts the caller follows, id and title only.
   static const subscriptions = '/api/me/subscriptions';
+
+  /// Who the caller is and what they may do — the vote page reads
+  /// permissions.canVote from it.
+  static const me = '/api/me';
+
+  /// A text plus the slots of its current round, if any. No open round is a
+  /// 200 with roundNumber 0 and no slots, not a 404.
+  static String textWithSlots(String id) => '/api/texts/$id/with-slots';
+
+  /// The competing proposals for one slot, including the seed fragment that
+  /// stands for "keep the original wording".
+  static String slotFragments(String textId, String slotId) => '/api/texts/$textId/slots/$slotId/fragments';
+
+  static String castVote(String fragmentId) => '/api/fragments/$fragmentId/vote';
 }

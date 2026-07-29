@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../../search/presentation/pages/text_detail_page.dart';
+import '../../../vote/presentation/pages/vote_page.dart';
 import '../../data/datasources/subscription_api.dart';
 import '../../data/models/subscribed_text.dart';
 
@@ -43,6 +44,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     );
   }
 
+  void _openVote(SubscribedText text) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => VotePage(textId: text.id)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,6 +74,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               return ListTile(
                 title: Text(text.title),
                 onTap: () => _openText(text),
+                // The row still opens the text; voting is its own target so
+                // that reaching the round never means opening the text first.
+                trailing: TextButton(
+                  onPressed: () => _openVote(text),
+                  child: const Text('Voter'),
+                ),
               );
             },
           ),
