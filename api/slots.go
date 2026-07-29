@@ -39,7 +39,7 @@ type textSupersededResponse struct {
 // rbac.ActionEditSelection) — carving out a new range is the more
 // consequential half of the operation, so it's gated separately from just
 // proposing content for a range someone already selected.
-func proposeEditHandler(repo *queel.Repository) http.HandlerFunc {
+func proposeEditHandler(repo *queel.Repository, notifier *textNotifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		textID := r.PathValue("id")
 
@@ -105,6 +105,15 @@ func proposeEditHandler(repo *queel.Repository) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+
+		// The title isn't to hand — the handler only ever needed the id —
+		// and a failed lookup must not turn a successful proposal into an
+		// error, so the notification just goes out without it.
+		title := ""
+		if text, err := repo.Text(textID); err == nil {
+			title = text.Title
+		}
+		notifier.EditProposed(textID, title, claims.Subject)
 
 		writeJSON(w, http.StatusCreated, fragment)
 	}

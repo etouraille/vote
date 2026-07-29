@@ -32,15 +32,47 @@ func newTextNotifier(repo *queel.Repository, store *Store, dispatcher *notify.Di
 	return &textNotifier{repo: repo, store: store, dispatcher: dispatcher}
 }
 
-// TextUpdated notifies everyone following text, except actorID — whoever
-// made the change does not need telling, and since CreateText subscribes
+// TextUpdated notifies the followers of a text rewritten outright, through
+// PUT /api/texts/{id}.
+//
+// Rarely the one that fires in practice: the Angular editor never calls
+// that route — it proposes edits, see EditProposed below. Kept because the
+// route exists and a client that does use it should notify all the same.
+func (n *textNotifier) TextUpdated(text *queel.Text, actorID string) {
+	n.notify(text.ID, actorID, notify.Notification{
+		Title: "Texte modifié",
+		Body:  fmt.Sprintf("« %s » vient d'être modifié.", text.Title),
+		Data: map[string]string{
+			"type":   "text.updated",
+			"textId": text.ID,
+		},
+	})
+}
+
+// EditProposed notifies the followers of a text somebody has proposed a
+// change to — what "modifying a text" actually means in this app: carving
+// out a slot and submitting a competing wording for it, which is what the
+// editor does and what followers are waiting to vote on.
+func (n *textNotifier) EditProposed(textID, title, actorID string) {
+	n.notify(textID, actorID, notify.Notification{
+		Title: "Modification proposée",
+		Body:  fmt.Sprintf("Une modification vient d'être proposée sur « %s ».", title),
+		Data: map[string]string{
+			"type":   "text.edit-proposed",
+			"textId": textID,
+		},
+	})
+}
+
+// notify delivers n to everyone following textID, except actorID — whoever
+// caused the change does not need telling, and since CreateText subscribes
 // an author to their own text, skipping this would notify them of every
 // edit they make themselves.
 //
 // Returns immediately: delivery runs in the background on its own context,
-// so a slow provider never delays the response to the edit that triggered
+// so a slow provider never delays the response to the action that triggered
 // it, and cancelling that request doesn't cancel the notification.
-func (n *textNotifier) TextUpdated(text *queel.Text, actorID string) {
+func (n *textNotifier) notify(textID, actorID string, notification notify.Notification) {
 	if n == nil || n.dispatcher == nil {
 		return
 	}
@@ -49,20 +81,13 @@ func (n *textNotifier) TextUpdated(text *queel.Text, actorID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 		defer cancel()
 
-		recipients, err := n.recipients(ctx, text.ID, actorID)
+		recipients, err := n.recipients(ctx, textID, actorID)
 		if err != nil {
-			log.Printf("notify: resolving recipients for text %s: %v", text.ID, err)
+			log.Printf("notify: resolving recipients for text %s: %v", textID, err)
 			return
 		}
 
-		n.dispatcher.Notify(ctx, notify.Notification{
-			Title: "Texte modifié",
-			Body:  fmt.Sprintf("« %s » vient d'être modifié.", text.Title),
-			Data: map[string]string{
-				"type":   "text.updated",
-				"textId": text.ID,
-			},
-		}, recipients)
+		n.dispatcher.Notify(ctx, notification, recipients)
 	}()
 }
 

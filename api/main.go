@@ -223,7 +223,7 @@ func main() {
 	mux.HandleFunc("GET /api/texts/{id}/with-slots", textWithSlotsHandler(textRepo))
 	mux.HandleFunc("PUT /api/texts/{id}", updateTextHandler(textRepo, notifier))
 	mux.HandleFunc("DELETE /api/texts/{id}", deleteTextHandler(textRepo, searchIndex))
-	mux.HandleFunc("POST /api/texts/{id}/slots", proposeEditHandler(textRepo))
+	mux.HandleFunc("POST /api/texts/{id}/slots", proposeEditHandler(textRepo, notifier))
 	mux.HandleFunc("GET /api/texts/{id}/slots/{slotId}/fragments", fragmentsForSlotHandler(textRepo))
 	mux.HandleFunc("POST /api/texts/{id}/close-round", closeRoundHandler(textRepo, searchIndex))
 	mux.HandleFunc("POST /api/texts/{id}/schedule-close", scheduleCloseHandler(textRepo))
