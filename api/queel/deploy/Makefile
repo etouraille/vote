@@ -7,10 +7,15 @@ BINARY := vote-api-cluster
 ENV := ../../.env
 NODES := node1 node2 node3
 
-.PHONY: build build-api up down kill-node kill-all restart status clean
+.PHONY: build build-api up down check-orphans kill-node kill-all restart status clean
 
 # How long kill-all waits between one node's SIGTERM and the next's.
 KILL_DELAY ?= 5
+
+# How long down waits for a node to exit after SIGTERM before escalating to
+# SIGKILL. Generous, because SIGTERM triggers a decommission that hands this
+# node's data off to its peers — cutting that short costs replication.
+STOP_TIMEOUT ?= 15
 
 build:
 	cd ../.. && go build -o queel/deploy/$(BINARY) .
@@ -31,10 +36,20 @@ build-api:
 # defeat this) — every line already names its own port (see main.go's
 # startup log), so the 3 nodes stay distinguishable even interleaved. Since
 # nothing keeps them alive past a SIGHUP anymore, keep the terminal running
-# `make up` open for as long as the cluster should stay up. Re-running
-# `make up` while nodes are already running just adds duplicate processes;
-# run `make down` first.
+# `make up` open for as long as the cluster should stay up.
+#
+# Refuses to start on top of a node that is already running: doing so used
+# to spawn a duplicate that couldn't bind its port and died, while the pid
+# file was overwritten with the dead one's pid — leaving the real node
+# untracked and `down` unable to reach it.
 up: build
+	@for n in $(NODES); do \
+		if [ -f $$n.pid ] && kill -0 $$(cat $$n.pid) 2>/dev/null; then \
+			echo "$$n already running (pid $$(cat $$n.pid)) — run 'make down' first" >&2; \
+			exit 1; \
+		fi; \
+	done
+	@$(MAKE) --no-print-directory check-orphans
 	@first=1; \
 	for n in $(NODES); do \
 		echo "starting $$n..."; \
@@ -43,11 +58,73 @@ up: build
 	done
 	@echo "cluster up — logs streaming above, 'make status' to check"
 
+# down stops every node and, unlike a bare `kill`, makes sure they are
+# actually gone before saying so.
+#
+# It waits for each process to exit rather than firing SIGTERM and moving
+# on: a node handles SIGTERM by decommissioning (see kill-node), which takes
+# time, and `down` immediately followed by `up` would otherwise start new
+# nodes while the old ones still hold the ports.
+#
+# The pid file is removed only once the process is confirmed dead. Deleting
+# it on a failed kill was the real trap: it threw away the only handle on a
+# node that was still running, after which `status` reported "stopped" and
+# the port stayed busy with no way left to name the culprit.
 down:
-	@for n in $(NODES); do \
-		if [ -f $$n.pid ]; then kill -TERM $$(cat $$n.pid) 2>/dev/null || true; rm -f $$n.pid; fi; \
-	done
-	@echo "cluster stopped"
+	@stopped=0; failed=0; \
+	for n in $(NODES); do \
+		pid=""; \
+		[ -f $$n.pid ] && pid=$$(cat $$n.pid); \
+		if [ -z "$$pid" ] || ! kill -0 $$pid 2>/dev/null; then \
+			echo "$$n: not running"; \
+			rm -f $$n.pid; \
+			continue; \
+		fi; \
+		kill -TERM $$pid 2>/dev/null || true; \
+		waited=0; \
+		while kill -0 $$pid 2>/dev/null && [ $$waited -lt $(STOP_TIMEOUT) ]; do \
+			sleep 1; waited=$$((waited + 1)); \
+		done; \
+		if kill -0 $$pid 2>/dev/null; then \
+			echo "$$n: still alive $(STOP_TIMEOUT)s after SIGTERM, sending SIGKILL"; \
+			kill -KILL $$pid 2>/dev/null || true; \
+			sleep 1; \
+		fi; \
+		if kill -0 $$pid 2>/dev/null; then \
+			echo "$$n: FAILED to stop (pid $$pid) — pid file kept" >&2; \
+			failed=$$((failed + 1)); \
+		else \
+			echo "$$n: stopped (pid $$pid, after $${waited}s)"; \
+			rm -f $$n.pid; \
+			stopped=$$((stopped + 1)); \
+		fi; \
+	done; \
+	echo "cluster down: $$stopped stopped, $$failed still running"; \
+	[ $$failed -eq 0 ]
+	@$(MAKE) --no-print-directory check-orphans
+
+# check-orphans reports any node process no pid file accounts for.
+#
+# That is the state a previously broken `down` used to leave behind, and it
+# is invisible otherwise: `status` only knows about pid files, so a node
+# running without one looks stopped while still holding its port.
+#
+# Matched on the anchored command line rather than the process name: Linux
+# truncates process names to 15 characters, so `pgrep -x vote-api-cluster`
+# silently matches nothing at all. The anchors keep the `go build` that
+# writes this same path, and make's own shell, from counting as nodes.
+check-orphans:
+	@leftover=$$(pgrep -f "^\./$(BINARY)$$" 2>/dev/null | tr '\n' ' '); \
+	tracked=""; \
+	for n in $(NODES); do [ -f $$n.pid ] && tracked="$$tracked $$(cat $$n.pid)"; done; \
+	orphans=""; \
+	for pid in $$leftover; do \
+		case " $$tracked " in *" $$pid "*) ;; *) orphans="$$orphans $$pid";; esac; \
+	done; \
+	if [ -n "$$orphans" ]; then \
+		echo "warning: $(BINARY) running without a pid file:$$orphans" >&2; \
+		echo "         stop them with: kill -TERM$$orphans" >&2; \
+	fi
 
 # kill-node stops a single node with SIGTERM (make kill-node NODE=node3) —
 # unlike `down` (all 3 at once), this is for exercising a single node's
@@ -92,6 +169,7 @@ status:
 			echo "$$n: stopped"; \
 		fi; \
 	done
+	@$(MAKE) --no-print-directory check-orphans
 
 # clean stops the cluster and wipes its state (each node's local queel data,
 # the shared rbac.db plus its -wal/-shm sidecar files, pid files) so the

@@ -8,7 +8,12 @@ CLUSTER_RF ?= 3
 CLUSTER_GOSSIP_INTERVAL ?= 1s
 CLUSTER_DIR := .cluster
 
-.PHONY: build run test clean cluster-up cluster-down cluster-status cluster-clean
+# How long cluster-down waits for one node to exit after SIGTERM before
+# escalating to SIGKILL. Deliberately above cluster.DefaultDecommissionTimeout
+# (25s), so a node busy handing its data off is never cut short by this.
+CLUSTER_STOP_TIMEOUT ?= 30
+
+.PHONY: build run test clean cluster-up cluster-down cluster-orphans cluster-status cluster-clean
 
 build:
 	go build -o $(BINARY) ./cmd/queeld
@@ -42,24 +47,86 @@ cluster-up: build
 	done
 	@echo "cluster of $(CLUSTER_NODES) node(s) started on ports $(CLUSTER_BASE_PORT)-$$(( $(CLUSTER_BASE_PORT) + $(CLUSTER_NODES) - 1 )); logs in $(CLUSTER_DIR)/node-*.log"
 
-# cluster-down stops every node started by cluster-up.
+# cluster-down stops every node started by cluster-up, one at a time, and
+# makes sure each is actually gone before saying so.
+#
+# SIGTERM, not SIGKILL: only SIGTERM and SIGINT are trapped (see
+# cluster.DecommissionOnShutdown), and that trap is what hands a departing
+# node's data off to its peers. SIGKILL cannot be caught, so it would skip
+# the handoff entirely — the very data loss stopping nodes carefully is
+# meant to avoid. It stays here only as a last resort, for a node that
+# refuses to leave, and says so when it comes to that.
+#
+# One node at a time falls out of waiting for each to exit before moving
+# on: a departing node hands its data to nodes that are still alive, so
+# signalling all three at once races several simultaneous departures
+# against a shrinking set of survivors.
+#
+# The pid file is removed only once the process is confirmed dead. Deleting
+# it after a failed kill throws away the only handle on a node that is
+# still running, leaving cluster-status to report it as stopped while it
+# still holds its port.
 cluster-down:
-	@for f in $(CLUSTER_DIR)/*.pid; do \
+	@stopped=0; failed=0; \
+	for f in $(CLUSTER_DIR)/*.pid; do \
 		[ -f "$$f" ] || continue; \
 		pid=$$(cat "$$f"); \
-		kill $$pid 2>/dev/null || true; \
-		rm -f "$$f"; \
-	done
-	@echo "cluster stopped"
+		if [ -z "$$pid" ] || ! kill -0 $$pid 2>/dev/null; then \
+			echo "$$f: not running"; \
+			rm -f "$$f"; \
+			continue; \
+		fi; \
+		kill -TERM $$pid 2>/dev/null || true; \
+		waited=0; \
+		while kill -0 $$pid 2>/dev/null && [ $$waited -lt $(CLUSTER_STOP_TIMEOUT) ]; do \
+			sleep 1; waited=$$((waited + 1)); \
+		done; \
+		if kill -0 $$pid 2>/dev/null; then \
+			echo "$$f: still alive $(CLUSTER_STOP_TIMEOUT)s after SIGTERM — SIGKILL, decommission incomplete" >&2; \
+			kill -KILL $$pid 2>/dev/null || true; \
+			sleep 1; \
+		fi; \
+		if kill -0 $$pid 2>/dev/null; then \
+			echo "$$f: FAILED to stop (pid $$pid) — pid file kept" >&2; \
+			failed=$$((failed + 1)); \
+		else \
+			echo "$$f: stopped (pid $$pid, after $${waited}s)"; \
+			rm -f "$$f"; \
+			stopped=$$((stopped + 1)); \
+		fi; \
+	done; \
+	echo "cluster-down: $$stopped stopped, $$failed still running"; \
+	[ $$failed -eq 0 ]
+	@$(MAKE) --no-print-directory cluster-orphans
+
+# cluster-orphans reports any queeld process no pid file accounts for —
+# the state a kill that failed while its pid file was deleted leaves
+# behind, and which cluster-status alone cannot see.
+cluster-orphans:
+	@leftover=$$(pgrep -x $(BINARY) 2>/dev/null | tr '\n' ' '); \
+	tracked=""; \
+	for f in $(CLUSTER_DIR)/*.pid; do [ -f "$$f" ] && tracked="$$tracked $$(cat $$f)"; done; \
+	orphans=""; \
+	for pid in $$leftover; do \
+		case " $$tracked " in *" $$pid "*) ;; *) orphans="$$orphans $$pid";; esac; \
+	done; \
+	if [ -n "$$orphans" ]; then \
+		echo "warning: $(BINARY) running without a pid file:$$orphans" >&2; \
+		echo "         stop them with: kill -TERM$$orphans" >&2; \
+	fi
 
 # cluster-status shows whether each node's process is still running.
 cluster-status:
-	@for f in $(CLUSTER_DIR)/*.pid; do \
+	@found=0; \
+	for f in $(CLUSTER_DIR)/*.pid; do \
 		[ -f "$$f" ] || continue; \
+		found=1; \
 		pid=$$(cat "$$f"); \
 		if kill -0 $$pid 2>/dev/null; then state="running"; else state="stopped"; fi; \
 		echo "$$f: pid $$pid ($$state)"; \
-	done
+	done; \
+	[ $$found -eq 1 ] || echo "no pid files in $(CLUSTER_DIR)/ — cluster not started from here"
+	@$(MAKE) --no-print-directory cluster-orphans
 
 cluster-clean: cluster-down
 	rm -rf $(CLUSTER_DIR)
