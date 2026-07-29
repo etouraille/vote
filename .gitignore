@@ -5,3 +5,16 @@ api/.env
 # une clé commitée doit être révoquée, pas seulement supprimée.
 api/firebase-key.json
 *-key.json
+
+# Binaires compilés — reconstruits par `make build` / `make build-api`.
+# Suivis jusqu'ici, ils salissaient l'arbre à chaque compilation et
+# pesaient 17 Mo à chaque version.
+api/vote-api
+api/queel/queeld
+api/queel/deploy/vote-api-cluster
+
+# État d'exécution des clusters : journaux, pid et données locales des
+# nœuds. Regénéré à chaque `make cluster-up` / `make up`.
+api/queel/.cluster/
+api/queel/deploy/node*/
+api/queel/deploy/node*.pid
