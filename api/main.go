@@ -201,7 +201,11 @@ func main() {
 	// then, same graceful-degradation approach as Qdrant/Ollama/Brevo
 	// above rather than refusing to start without it.
 	if googleClientID := os.Getenv("GOOGLE_CLIENT_ID"); googleClientID != "" {
-		mux.HandleFunc("POST /api/auth/google", googleLoginHandler(store, rbacStore, []byte(jwtSecret), googleClientID))
+		// GOOGLE_CLIENT_ID_MOBILE is separately optional: without it the
+		// route still serves the web front, and only callers announcing
+		// themselves as the mobile app are turned away (see googleAudience).
+		mobileClientID := os.Getenv("GOOGLE_CLIENT_ID_MOBILE")
+		mux.HandleFunc("POST /api/auth/google", googleLoginHandler(store, rbacStore, []byte(jwtSecret), googleClientID, mobileClientID))
 	}
 	mux.HandleFunc("GET /api/me", meHandler(store))
 	mux.HandleFunc("GET /api/admin/users", listUsersHandler(store, rbacStore))

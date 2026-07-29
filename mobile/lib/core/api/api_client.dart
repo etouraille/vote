@@ -28,8 +28,19 @@ class ApiClient {
     return _decode(response);
   }
 
+  /// Tells the api which front end is calling. Only POST /api/auth/google
+  /// acts on it today — web and mobile sign in through separate Google
+  /// OAuth clients, so the api needs to know whose `aud` claim to expect
+  /// (see googleAudience in api/auth.go) — but it's sent on every request
+  /// so identifying the app never depends on which route is hit.
+  static const _clientHeaderName = 'X-Queel-Client';
+  static const _clientHeaderValue = 'mobile';
+
   static Future<Map<String, String>> _headers() async {
-    final headers = {'Content-Type': 'application/json'};
+    final headers = {
+      'Content-Type': 'application/json',
+      _clientHeaderName: _clientHeaderValue,
+    };
     final token = await SecureStorage.readValidToken();
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';

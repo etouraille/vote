@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.mobile"
+    namespace = "com.queel.mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +15,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.mobile"
+        // Must stay in sync with the Android OAuth client registered in
+        // Google Cloud Console (package name + signing-certificate SHA-1),
+        // or "Sign in with Google" fails on device — see
+        // lib/app/config/google_client_id.dart.
+        applicationId = "com.queel.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

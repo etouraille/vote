@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -196,6 +197,66 @@ type needsPseudoResponse struct {
 	NeedsPseudo bool `json:"needsPseudo"`
 }
 
+// clientHeader lets a caller say which of this project's front ends it is,
+// so googleLoginHandler knows which OAuth client's audience to expect on an
+// ID token. The Angular front sends nothing and gets the web client; the
+// Flutter app sends mobileClient (see mobile's ApiClient) and gets the
+// mobile one.
+//
+// Deliberately not a security boundary — anyone can set it. It only picks
+// which audience is accepted, and both belong to the same Google project;
+// the token itself is still verified against Google's signing keys either
+// way, so claiming to be the app buys a caller nothing it couldn't already
+// have by calling as the web front.
+const clientHeader = "X-Queel-Client"
+
+const mobileClient = "mobile"
+
+// unverifiedGoogleClaims summarizes an ID token's own account of itself,
+// for logging a rejection and nothing else — the signature is deliberately
+// not checked here, so nothing it returns may be trusted or acted on.
+//
+// Only iss/aud/exp are pulled out: they are what a rejection turns on, and
+// none of them is a secret (the audience is a public client ID, published
+// in the front end's own source). The token itself is never logged.
+func unverifiedGoogleClaims(idToken string) string {
+	parts := strings.Split(idToken, ".")
+	if len(parts) != 3 {
+		return "unparseable (not a 3-part JWT)"
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "unparseable (bad base64 payload)"
+	}
+	var claims struct {
+		Iss string `json:"iss"`
+		Aud string `json:"aud"`
+		Exp int64  `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "unparseable (bad JSON payload)"
+	}
+	return fmt.Sprintf("iss=%q aud=%q exp=%s", claims.Iss, claims.Aud, time.Unix(claims.Exp, 0).Format(time.RFC3339))
+}
+
+// googleAudience picks the OAuth client ID an incoming ID token must be
+// audienced for, given who r claims to be.
+//
+// ok=false means the caller identified as the mobile app on a server that
+// has no mobile client configured. That deliberately fails rather than
+// falling back to webClientID: the fallback would let the request through
+// to a `aud` check that cannot ever match, turning a missing setting into
+// an "invalid Google token" 401 pointing nowhere near the actual cause.
+func googleAudience(r *http.Request, webClientID, mobileClientID string) (clientID string, ok bool) {
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get(clientHeader)), mobileClient) {
+		return webClientID, true
+	}
+	if mobileClientID == "" {
+		return "", false
+	}
+	return mobileClientID, true
+}
+
 // googleLoginHandler signs a caller in via "Sign in with Google": idToken
 // is verified against Google's own signing keys (rbac.VerifyGoogleIDToken)
 // rather than trusted at face value, so this never has to take the
@@ -215,7 +276,11 @@ type needsPseudoResponse struct {
 // needs pseudo, which Google's identity doesn't supply; omitting it gets a
 // needsPseudoResponse back instead of creating anything, so the front end
 // can prompt for one and retry with the same idToken plus that pseudo.
-func googleLoginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte, googleClientID string) http.HandlerFunc {
+//
+// Web and mobile sign in through separate Google OAuth clients, so their
+// tokens carry different `aud` claims and neither verifies against the
+// other's client ID — googleAudience picks which one applies here.
+func googleLoginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte, googleClientID, mobileClientID string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req googleAuthRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -223,8 +288,24 @@ func googleLoginHandler(store *Store, rbacStore *rbac.Store, jwtSecret []byte, g
 			return
 		}
 
-		identity, err := rbac.VerifyGoogleIDToken(req.IDToken, googleClientID)
+		clientID, ok := googleAudience(r, googleClientID, mobileClientID)
+		if !ok {
+			writeError(w, http.StatusServiceUnavailable, "connexion Google non configurée pour l'application mobile")
+			return
+		}
+
+		identity, err := rbac.VerifyGoogleIDToken(req.IDToken, clientID)
 		if err != nil {
+			// rbac collapses issuer/audience/signature failures into one
+			// error, so log what the token actually claims next to what was
+			// expected — an `aud` mismatch is a configuration mistake and
+			// looks identical, from the outside, to a forged token.
+			log.Printf("google sign-in rejected: %v (expected aud %q, token claims %s)",
+				err, clientID, unverifiedGoogleClaims(req.IDToken))
+			if errors.Is(err, rbac.ErrGoogleTokenExpired) {
+				writeError(w, http.StatusUnauthorized, "jeton Google expiré")
+				return
+			}
 			writeError(w, http.StatusUnauthorized, "jeton Google invalide")
 			return
 		}
