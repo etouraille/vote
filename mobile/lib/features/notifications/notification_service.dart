@@ -1,9 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../app/config/env.dart';
+import '../../app/router.dart';
+import '../vote/presentation/pages/vote_page.dart';
 import 'data/datasources/device_api.dart';
 
 /// Android notification channel. Android groups notifications by channel
@@ -58,6 +60,15 @@ class NotificationService {
       // delivered to the app instead of being shown by the system, so it
       // has to be surfaced by hand or it goes unnoticed.
       FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+
+      // Tapped while the app was merely backgrounded.
+      FirebaseMessaging.onMessageOpenedApp.listen((message) => _openFromData(message.data));
+
+      // Tapped while the app was not running at all: the message that
+      // launched it is waiting here rather than arriving on a stream, and
+      // is only ever delivered once.
+      final launchMessage = await FirebaseMessaging.instance.getInitialMessage();
+      if (launchMessage != null) _openFromData(launchMessage.data);
     } catch (error) {
       debugPrint('notifications: initialisation impossible: $error');
     }
@@ -68,6 +79,10 @@ class NotificationService {
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
+      // Foreground notifications are drawn by this plugin, not the system,
+      // so their taps come back here rather than through
+      // FirebaseMessaging.onMessageOpenedApp.
+      onDidReceiveNotificationResponse: (response) => _openText(response.payload),
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
@@ -82,6 +97,9 @@ class NotificationService {
       id: notification.hashCode,
       title: notification.title,
       body: notification.body,
+      // Carries the text id through the plugin so a tap knows where to go —
+      // the FCM data map isn't handed back with the tap, only this is.
+      payload: message.data['textId'] as String?,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _androidChannel.id,
@@ -91,6 +109,27 @@ class NotificationService {
         ),
       ),
     );
+  }
+
+  /// Opens the vote page for whichever text a tapped notification carried.
+  ///
+  /// The id travels in the message's data map (see the api's EditProposed),
+  /// not in its title or body: the visible text is for the reader, the data
+  /// is what the app acts on.
+  static void _openFromData(Map<String, dynamic> data) {
+    _openText(data['textId'] as String?);
+  }
+
+  static void _openText(String? textId) {
+    if (textId == null || textId.isEmpty) return;
+
+    // Navigating from outside the widget tree — a tap handler has no
+    // BuildContext of its own. Null while the app is still starting up,
+    // in which case there is nothing to push onto yet.
+    final navigator = AppRouter.navigatorKey.currentState;
+    if (navigator == null) return;
+
+    navigator.push(MaterialPageRoute(builder: (_) => VotePage(textId: textId)));
   }
 
   /// Forgets this device server-side, so its owner stops receiving

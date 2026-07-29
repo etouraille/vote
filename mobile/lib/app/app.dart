@@ -20,6 +20,7 @@ class QueelApp extends StatelessWidget {
       title: 'Queel',
       theme: AppTheme.light,
       home: initialPage,
+      navigatorKey: AppRouter.navigatorKey,
       onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }

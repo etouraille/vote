@@ -9,6 +9,11 @@ import '../features/subscriptions/presentation/pages/subscriptions_page.dart';
 class AppRouter {
   AppRouter._();
 
+  /// Lets code outside the widget tree navigate — specifically a tapped
+  /// notification, which is handled by NotificationService and has no
+  /// BuildContext of its own to push from.
+  static final navigatorKey = GlobalKey<NavigatorState>();
+
   static const String login = '/login';
   static const String search = '/search';
   static const String subscriptions = '/subscriptions';
