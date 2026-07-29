@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../core/storage/secure_storage.dart';
+import '../../features/authentication/data/datasources/google_sign_in_api.dart';
 import '../router.dart';
+
+/// Menu entry that signs out rather than navigating. Not a route, so it
+/// can't collide with one — the menu keys on this value alone.
+const _logoutAction = 'logout';
 
 /// The app bar every signed-in screen uses, so the overflow menu is reached
 /// from anywhere rather than only from the search page.
@@ -22,20 +28,47 @@ class QueelAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: Text(title),
       actions: [
         PopupMenuButton<String>(
-          onSelected: (value) => _open(context, value),
+          onSelected: (value) => _select(context, value),
           itemBuilder: (_) => const [
             PopupMenuItem(value: AppRouter.subscriptions, child: Text('Mes abonnements')),
+            // Last, and set apart: it's the one entry that undoes the
+            // session rather than moving around inside it.
+            PopupMenuDivider(),
+            PopupMenuItem(value: _logoutAction, child: Text('Déconnexion')),
           ],
         ),
       ],
     );
   }
 
-  void _open(BuildContext context, String route) {
+  void _select(BuildContext context, String value) {
+    if (value == _logoutAction) {
+      _logout(context);
+      return;
+    }
+
     // Selecting the screen you're already on would otherwise stack a second
     // identical copy, which only shows up as a back button that appears to
     // do nothing.
-    if (ModalRoute.of(context)?.settings.name == route) return;
-    Navigator.of(context).pushNamed(route);
+    if (ModalRoute.of(context)?.settings.name == value) return;
+    Navigator.of(context).pushNamed(value);
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    await SecureStorage.clear();
+
+    // Also drop the plugin's cached Google account, or "Continuer avec
+    // Google" would sign the same person straight back in without ever
+    // showing the picker — which doesn't look like having signed out.
+    // Best-effort: failing to clear it must not keep the user signed in.
+    try {
+      await GoogleSignInApi.signOut();
+    } catch (_) {}
+
+    // pushNamedAndRemoveUntil, not pushReplacement: signing out has to drop
+    // every screen behind this one too, or the back button walks straight
+    // back into a session that no longer exists.
+    navigator.pushNamedAndRemoveUntil(AppRouter.login, (_) => false);
   }
 }
