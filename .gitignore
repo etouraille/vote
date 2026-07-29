@@ -1,2 +1,7 @@
 api/data
 api/.env
+
+# Clé privée du compte de service Firebase (FCM_SERVICE_ACCOUNT_FILE) —
+# une clé commitée doit être révoquée, pas seulement supprimée.
+api/firebase-key.json
+*-key.json
