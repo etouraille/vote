@@ -43,6 +43,7 @@ func NewHandler(repo *queel.Repository, jwtSecret []byte) http.Handler {
 	mux.HandleFunc("POST /texts/{id}/close-round", closeRoundHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/schedule-close", scheduleCloseHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/subscribe", subscribeHandler(repo))
+	mux.HandleFunc("GET /users/{userId}/subscriptions", subscriptionsHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/slots/{slotId}/fragments", fragmentsHandler(repo))
 	mux.HandleFunc("GET /fragments/{id}", getFragmentHandler(repo))
 	mux.HandleFunc("POST /vote", castVoteHandler(repo, jwtSecret))
@@ -401,6 +402,48 @@ func subscribeHandler(repo *queel.Repository) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, subscribeResponse{Subscribed: true})
+	}
+}
+
+// subscribedText mirrors the api's own listing shape: id and title only,
+// since this exists to render a list of followed titles and the full
+// content of every one of them would be dead weight.
+type subscribedText struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// subscriptionsHandler lists the texts a user follows. As everywhere in
+// this package, identity is passed in — here as the {userId} path segment —
+// rather than read from a token (see the package doc), matching how
+// subscribeHandler above takes it in the body.
+//
+// A subscription whose text no longer exists is skipped: nothing prunes
+// subscriptions when a text is deleted, so one dangling id must not fail
+// the whole listing.
+func subscriptionsHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		textIDs, err := repo.SubscriptionsForUser(r.PathValue("userId"))
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+
+		// Never nil, so an empty list marshals as [] rather than null.
+		texts := make([]subscribedText, 0, len(textIDs))
+		for _, id := range textIDs {
+			text, err := repo.Text(id)
+			if err != nil {
+				if errors.Is(err, queel.ErrNotFound) {
+					continue
+				}
+				writeRepositoryError(w, err)
+				return
+			}
+			texts = append(texts, subscribedText{ID: text.ID, Title: text.Title})
+		}
+
+		writeJSON(w, http.StatusOK, texts)
 	}
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../data/datasources/search_api.dart';
 import '../../data/models/search_result.dart';
@@ -56,7 +57,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Queel')),
+      appBar: const QueelAppBar(title: 'Queel'),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

@@ -155,3 +155,104 @@ func TestSubscribeHandlerUnknownText(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestSubscriptionsHandlerListsFollowedTitles(t *testing.T) {
+	repo := newTestRepo(t)
+	handler := NewHandler(repo, nil)
+
+	first, err := repo.CreateText("Premier", "Contenu", "author-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repo.CreateText("Second", "Contenu", "author-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A third text nobody follows, to prove the listing is per-user and
+	// not just "every text there is".
+	if _, err := repo.CreateText("Ignoré", "Contenu", "author-1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		if _, err := repo.Subscribe("reader-1", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/users/reader-1/subscriptions", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var got []subscribedText
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 subscriptions, got %d: %s", len(got), rec.Body.String())
+	}
+	titles := map[string]bool{got[0].Title: true, got[1].Title: true}
+	if !titles["Premier"] || !titles["Second"] {
+		t.Fatalf("expected the two followed titles, got %s", rec.Body.String())
+	}
+}
+
+// [] rather than null: clients iterate the response without special-casing
+// "no subscriptions yet".
+func TestSubscriptionsHandlerReturnsEmptyArrayForNoSubscriptions(t *testing.T) {
+	repo := newTestRepo(t)
+	handler := NewHandler(repo, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/users/nobody/subscriptions", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if body := strings.TrimSpace(rec.Body.String()); body != "[]" {
+		t.Fatalf("expected [], got %q", body)
+	}
+}
+
+// Nothing prunes subscriptions when a text is deleted, so a dangling id
+// must be skipped rather than failing every other subscription.
+func TestSubscriptionsHandlerSkipsDeletedTexts(t *testing.T) {
+	repo := newTestRepo(t)
+	handler := NewHandler(repo, nil)
+
+	kept, err := repo.CreateText("Toujours là", "Contenu", "author-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := repo.CreateText("Supprimé", "Contenu", "author-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{kept.ID, removed.ID} {
+		if _, err := repo.Subscribe("reader-1", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.DeleteText(removed.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/users/reader-1/subscriptions", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got []subscribedText
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "Toujours là" {
+		t.Fatalf("expected only the surviving text, got %s", rec.Body.String())
+	}
+}

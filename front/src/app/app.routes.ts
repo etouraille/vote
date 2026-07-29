@@ -39,5 +39,11 @@ export const routes: Routes = [
     loadComponent: () => import('./container/vote/vote').then((m) => m.VotePage),
     title: 'Voter',
   },
+  {
+    path: 'text',
+    canActivate: [authGuard],
+    loadComponent: () => import('./container/text/text').then((m) => m.TextPage),
+    title: 'Texte',
+  },
   { path: '**', redirectTo: '' },
 ];
