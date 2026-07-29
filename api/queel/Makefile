@@ -13,7 +13,11 @@ CLUSTER_DIR := .cluster
 # (25s), so a node busy handing its data off is never cut short by this.
 CLUSTER_STOP_TIMEOUT ?= 30
 
-.PHONY: build run test clean cluster-up cluster-down cluster-orphans cluster-status cluster-clean
+# How long cluster-up waits for the seed node to start answering before
+# launching the others anyway.
+CLUSTER_SEED_TIMEOUT ?= 15
+
+.PHONY: build run test clean cluster-up wait-for-seed cluster-check cluster-down cluster-orphans cluster-status cluster-clean
 
 build:
 	go build -o $(BINARY) ./cmd/queeld
@@ -33,6 +37,15 @@ clean:
 # other node joins by gossiping through it, never via a static full node
 # list. Override node count / ports / replication factor as needed, e.g.:
 #   make cluster-up CLUSTER_NODES=5 CLUSTER_BASE_PORT=9200
+#
+# The others only start once the seed answers. Starting them all at once
+# raced the seed's own startup: every later node failed its join with
+# "connection refused" and exited immediately, leaving a one-node cluster
+# behind a message claiming three had started.
+#
+# Waiting for an answer rather than sleeping a fixed couple of seconds:
+# the right delay isn't knowable in advance, and a loaded machine loses
+# the race a constant would have won.
 cluster-up: build
 	@mkdir -p $(CLUSTER_DIR)
 	@for i in $$(seq 1 $(CLUSTER_NODES)); do \
@@ -44,8 +57,46 @@ cluster-up: build
 		QUEEL_GOSSIP_INTERVAL=$(CLUSTER_GOSSIP_INTERVAL) QUEEL_DATA_DIR=$(CLUSTER_DIR)/node-$$i \
 		PORT=$$port ./$(BINARY) > $(CLUSTER_DIR)/node-$$i.log 2>&1 & \
 		echo $$! > $(CLUSTER_DIR)/node-$$i.pid; \
+		if [ $$i -eq 1 ] && [ $(CLUSTER_NODES) -gt 1 ]; then \
+			$(MAKE) --no-print-directory wait-for-seed SEED_URL="$$addr"; \
+		fi; \
 	done
-	@echo "cluster of $(CLUSTER_NODES) node(s) started on ports $(CLUSTER_BASE_PORT)-$$(( $(CLUSTER_BASE_PORT) + $(CLUSTER_NODES) - 1 )); logs in $(CLUSTER_DIR)/node-*.log"
+	@$(MAKE) --no-print-directory cluster-check
+
+# wait-for-seed blocks until the seed accepts a connection. Any HTTP reply
+# proves the port is open, so the probe doesn't care which status it gets —
+# it only needs curl to connect. Without curl it falls back to a fixed
+# pause, which is what this used to do unconditionally.
+wait-for-seed:
+	@if ! command -v curl >/dev/null 2>&1; then sleep 2; exit 0; fi; \
+	waited=0; \
+	while [ $$waited -lt $(CLUSTER_SEED_TIMEOUT) ]; do \
+		curl -s -o /dev/null --max-time 1 "$(SEED_URL)/" 2>/dev/null && exit 0; \
+		sleep 1; waited=$$((waited + 1)); \
+	done; \
+	echo "warning: seed $(SEED_URL) silent after $(CLUSTER_SEED_TIMEOUT)s — starting the others anyway" >&2
+
+# cluster-check reports which nodes actually survived startup. A node that
+# fails to join exits on the spot, and without this the closing "cluster of
+# N node(s) started" would claim a cluster that isn't there — exactly the
+# lie the missing pause used to produce.
+cluster-check:
+	@sleep 1; \
+	alive=0; dead=""; \
+	for f in $(CLUSTER_DIR)/*.pid; do \
+		[ -f "$$f" ] || continue; \
+		pid=$$(cat "$$f"); \
+		if kill -0 $$pid 2>/dev/null; then \
+			alive=$$((alive + 1)); \
+		else \
+			dead="$$dead $$(basename $$f .pid)"; \
+		fi; \
+	done; \
+	if [ -n "$$dead" ]; then \
+		echo "warning: node(s) died on startup:$$dead — see $(CLUSTER_DIR)/node-*.log" >&2; \
+	fi; \
+	echo "cluster: $$alive node(s) running on ports $(CLUSTER_BASE_PORT)-$$(( $(CLUSTER_BASE_PORT) + $(CLUSTER_NODES) - 1 )); logs in $(CLUSTER_DIR)/node-*.log"; \
+	[ -z "$$dead" ]
 
 # cluster-down stops every node started by cluster-up, one at a time, and
 # makes sure each is actually gone before saying so.
