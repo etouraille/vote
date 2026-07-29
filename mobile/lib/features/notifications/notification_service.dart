@@ -93,6 +93,23 @@ class NotificationService {
     );
   }
 
+  /// Forgets this device server-side, so its owner stops receiving
+  /// notifications once signed out.
+  ///
+  /// Must run while the session is still valid: the api scopes the deletion
+  /// to the caller. Best-effort like everything else here — a sign-out must
+  /// never be blocked by it.
+  static Future<void> unregisterDevice() async {
+    if (!Env.pushConfigured) return;
+
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) await DeviceApi.unregister(token);
+    } catch (error) {
+      debugPrint('notifications: désenregistrement du jeton impossible: $error');
+    }
+  }
+
   /// Registers this device against the signed-in user, and keeps doing so
   /// whenever FCM rotates the token.
   ///

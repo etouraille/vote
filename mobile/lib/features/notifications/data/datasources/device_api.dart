@@ -12,4 +12,12 @@ class DeviceApi {
   static Future<void> register(String token, {String platform = 'android'}) async {
     await ApiClient.post(Endpoints.devices, {'token': token, 'platform': platform});
   }
+
+  /// Forgets this device server-side, so notifications stop once its owner
+  /// signs out. Must be called while the session is still valid — the api
+  /// scopes the deletion to the caller, so it has nothing to match on once
+  /// the token is gone.
+  static Future<void> unregister(String token) async {
+    await ApiClient.delete(Endpoints.devices, {'token': token});
+  }
 }

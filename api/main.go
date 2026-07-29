@@ -230,6 +230,7 @@ func main() {
 	mux.HandleFunc("POST /api/texts/{id}/subscribe", subscribeHandler(textRepo))
 	mux.HandleFunc("GET /api/me/subscriptions", subscriptionsHandler(textRepo))
 	mux.HandleFunc("POST /api/me/devices", registerDeviceHandler(store))
+	mux.HandleFunc("DELETE /api/me/devices", unregisterDeviceHandler(store))
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))
 	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo))
 

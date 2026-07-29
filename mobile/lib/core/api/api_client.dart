@@ -36,6 +36,18 @@ class ApiClient {
   static const _clientHeaderName = 'X-Queel-Client';
   static const _clientHeaderValue = 'mobile';
 
+  /// DELETE with a body — unusual, but the api's device routes identify the
+  /// device by the token itself rather than by a path segment, since a token
+  /// is far too long to sit in a URL.
+  static Future<dynamic> delete(String path, Map<String, dynamic> body) async {
+    final response = await http.delete(
+      Uri.parse('${Env.apiBaseUrl}$path'),
+      headers: await _headers(),
+      body: jsonEncode(body),
+    );
+    return _decode(response);
+  }
+
   static Future<Map<String, String>> _headers() async {
     final headers = {
       'Content-Type': 'application/json',

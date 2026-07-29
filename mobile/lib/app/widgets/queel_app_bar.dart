@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/storage/secure_storage.dart';
 import '../../features/authentication/data/datasources/google_sign_in_api.dart';
+import '../../features/notifications/notification_service.dart';
 import '../router.dart';
 
 /// Menu entry that signs out rather than navigating. Not a route, so it
@@ -56,6 +57,12 @@ class QueelAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   Future<void> _logout(BuildContext context) async {
     final navigator = Navigator.of(context);
+
+    // Before clearing the session, not after: the api scopes the deletion
+    // to the caller, so it has nothing left to match on once the bearer
+    // token is gone.
+    await NotificationService.unregisterDevice();
+
     await SecureStorage.clear();
 
     // Also drop the plugin's cached Google account, or "Continuer avec

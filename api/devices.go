@@ -85,8 +85,23 @@ func (s *Store) EmailsForUsers(ctx context.Context, userIDs []string) (map[strin
 
 // DeleteDeviceToken forgets a token — called when FCM reports it as
 // unregistered, which is what an uninstalled app looks like from here.
+//
+// Not scoped to a user on purpose: this is the server reacting to a device
+// that no longer exists, so whose it was is irrelevant.
 func (s *Store) DeleteDeviceToken(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM device_tokens WHERE token = $1`, token)
+	return err
+}
+
+// DeleteUserDeviceToken forgets a token only if it belongs to userID — the
+// sign-out counterpart of RegisterDeviceToken.
+//
+// Scoped where DeleteDeviceToken above is not, because here the request
+// comes from a client: an unscoped delete would let anyone holding a token
+// silence the device it belongs to.
+func (s *Store) DeleteUserDeviceToken(ctx context.Context, userID, token string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM device_tokens WHERE token = $1 AND user_id = $2`, token, userID)
 	return err
 }
 
@@ -133,6 +148,48 @@ func registerDeviceHandler(store *Store) http.HandlerFunc {
 
 		if err := store.RegisterDeviceToken(r.Context(), claims.Subject, token, platform); err != nil {
 			log.Printf("registering device token for %s: %v", claims.Subject, err)
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// unregisterDeviceHandler forgets a device's push token, so signing out
+// stops the notifications on that device.
+//
+// Scoped to the caller: the token is only deleted if it currently belongs
+// to them. Without that check, knowing any token would be enough to
+// silence someone else's phone — and tokens travel through every client
+// that ever registered one.
+//
+// Idempotent, and deliberately 204 even when nothing was deleted. A client
+// signing out cannot know whether its token was ever registered, and
+// failing here would leave it unable to complete a sign-out over something
+// that is already the desired state.
+func unregisterDeviceHandler(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
+
+		var req registerDeviceRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "corps de requête invalide")
+			return
+		}
+
+		token := strings.TrimSpace(req.Token)
+		if token == "" {
+			writeError(w, http.StatusBadRequest, "jeton d'appareil manquant")
+			return
+		}
+
+		if err := store.DeleteUserDeviceToken(r.Context(), claims.Subject, token); err != nil {
+			log.Printf("unregistering device token for %s: %v", claims.Subject, err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
