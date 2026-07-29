@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import 'app/app.dart';
 import 'app/config/env.dart';
 import 'core/storage/secure_storage.dart';
+import 'features/notifications/notification_service.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
 import 'features/search/presentation/pages/search_page.dart';
 
@@ -27,6 +30,16 @@ Future<void> main() async {
 
   await envLoaded;
   final token = await tokenRead;
+
+  // After Env.load, which holds the Firebase settings, and before runApp so
+  // a notification arriving immediately already has its channel. A no-op
+  // when push isn't configured, and it never throws — see the service.
+  await NotificationService.initialize();
+  // Only with a session in hand: the api takes the device's owner from the
+  // bearer token, so registering while signed out would be rejected. The
+  // login page does the same once a session is opened.
+  if (token != null) unawaited(NotificationService.registerDevice());
+
   await minSplashDuration;
 
   runApp(QueelApp(initialPage: token != null ? const SearchPage() : const LoginPage()));

@@ -1642,3 +1642,61 @@ func TestDeleteUserSubscriptionsNoSubscriptionsIsNoop(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSubscribersForTextListsFollowers(t *testing.T) {
+	repo := newTestRepository(t)
+
+	watched, err := repo.CreateText("Suivi", "content", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := repo.CreateText("Autre", "content", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, user := range []string{"alice", "bob"} {
+		if _, err := repo.Subscribe(user, watched.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// carol follows a different text: her subscription must not leak into
+	// the followers of the one being asked about.
+	if _, err := repo.Subscribe("carol", other.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	subscribers, err := repo.SubscribersForText(watched.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, id := range subscribers {
+		got[id] = true
+	}
+	// creator included: CreateText subscribes the author to their own text.
+	if len(got) != 3 || !got["alice"] || !got["bob"] || !got["creator"] {
+		t.Fatalf("expected creator, alice and bob, got %v", subscribers)
+	}
+}
+
+// A text nobody has explicitly followed still has exactly one subscriber:
+// its author, subscribed by CreateText. Worth pinning down, because it is
+// what makes notification fan-out need to exclude whoever caused the
+// change — otherwise an author editing their own text notifies themselves.
+func TestSubscribersForTextAlwaysIncludesItsCreator(t *testing.T) {
+	repo := newTestRepository(t)
+
+	text, err := repo.CreateText("Personne", "content", "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscribers, err := repo.SubscribersForText(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subscribers) != 1 || subscribers[0] != "creator" {
+		t.Fatalf("expected only the creator, got %v", subscribers)
+	}
+}

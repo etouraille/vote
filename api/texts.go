@@ -235,7 +235,7 @@ func fragmentsForSlotHandler(repo *queel.Repository) http.HandlerFunc {
 // addressed only by its ID in the URL — entirely separate from the
 // round/slot/vote workflow, so it works the same whether or not a voting
 // round happens to be open on that text.
-func updateTextHandler(repo *queel.Repository) http.HandlerFunc {
+func updateTextHandler(repo *queel.Repository, notifier *textNotifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !requirePermission(w, r, rbac.ActionUpdateText) {
 			return
@@ -257,6 +257,14 @@ func updateTextHandler(repo *queel.Repository) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
+
+		// After the write succeeded, and never gating the response on it:
+		// notifying is a consequence of the edit, not part of it.
+		var actorID string
+		if claims, ok := claimsFromContext(r); ok {
+			actorID = claims.Subject
+		}
+		notifier.TextUpdated(text, actorID)
 
 		writeJSON(w, http.StatusOK, textResponse{ID: text.ID})
 	}

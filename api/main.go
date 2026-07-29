@@ -189,6 +189,11 @@ func main() {
 	}
 	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval, scheduledCloseLeaderCheck)
 
+	// Notification fan-out. Every channel is optional (see .env.example):
+	// with none configured this still logs who would have been notified,
+	// so a missing provider never looks like a broken one.
+	notifier := newTextNotifier(textRepo, store, buildDispatcher(store, os.Getenv("FCM_SERVICE_ACCOUNT_FILE")))
+
 	mux := http.NewServeMux()
 	// Outside the /api/... prefix on purpose — requireToken only gates that
 	// prefix, so orchestration can probe this without a bearer token.
@@ -216,7 +221,7 @@ func main() {
 	mux.HandleFunc("GET /api/texts/search", searchTextsHandler(searchIndex, textRepo))
 	mux.HandleFunc("GET /api/texts/{id}", getTextHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/{id}/with-slots", textWithSlotsHandler(textRepo))
-	mux.HandleFunc("PUT /api/texts/{id}", updateTextHandler(textRepo))
+	mux.HandleFunc("PUT /api/texts/{id}", updateTextHandler(textRepo, notifier))
 	mux.HandleFunc("DELETE /api/texts/{id}", deleteTextHandler(textRepo, searchIndex))
 	mux.HandleFunc("POST /api/texts/{id}/slots", proposeEditHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/{id}/slots/{slotId}/fragments", fragmentsForSlotHandler(textRepo))
@@ -224,6 +229,7 @@ func main() {
 	mux.HandleFunc("POST /api/texts/{id}/schedule-close", scheduleCloseHandler(textRepo))
 	mux.HandleFunc("POST /api/texts/{id}/subscribe", subscribeHandler(textRepo))
 	mux.HandleFunc("GET /api/me/subscriptions", subscriptionsHandler(textRepo))
+	mux.HandleFunc("POST /api/me/devices", registerDeviceHandler(store))
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))
 	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo))
 

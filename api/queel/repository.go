@@ -128,6 +128,14 @@ func subscriptionKey(textID, userID string) []byte {
 	return []byte(fmt.Sprintf("subscription/%s/%s", textID, userID))
 }
 
+// subscriptionPrefix scans the primary record the other way round from
+// subscriptionIndexPrefix: every user following one text, rather than every
+// text one user follows. Free, because subscriptionKey already leads with
+// the text id.
+func subscriptionPrefix(textID string) []byte {
+	return []byte(fmt.Sprintf("subscription/%s/", textID))
+}
+
 func subscriptionIndexKey(userID, textID string) []byte {
 	return []byte(fmt.Sprintf("subscriptionindex/%s/%s", userID, textID))
 }
@@ -428,6 +436,30 @@ func (r *Repository) SubscriptionsForUser(userID string) ([]string, error) {
 		textIDs = append(textIDs, string(kv.Value))
 	}
 	return textIDs, nil
+}
+
+// SubscribersForText lists every user currently following textID — the
+// mirror image of SubscriptionsForUser, and what notification fan-out is
+// built on: a text's followers are exactly who a change to it concerns.
+//
+// The user id is read back out of the stored Subscription rather than
+// parsed off the key, so the key layout stays an implementation detail of
+// the helpers above.
+func (r *Repository) SubscribersForText(textID string) ([]string, error) {
+	kvs, err := r.store.Scan(subscriptionPrefix(textID))
+	if err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, 0, len(kvs))
+	for _, kv := range kvs {
+		var sub Subscription
+		if err := json.Unmarshal(kv.Value, &sub); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, sub.UserID)
+	}
+	return userIDs, nil
 }
 
 // DeleteUserSubscriptions removes every subscription userID ever made —

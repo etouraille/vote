@@ -25,6 +25,9 @@ class Endpoints {
   /// permissions.canVote from it.
   static const me = '/api/me';
 
+  /// Registers this device's push token against the signed-in user.
+  static const devices = '/api/me/devices';
+
   /// A text plus the slots of its current round, if any. No open round is a
   /// 200 with roundNumber 0 and no slots, not a 404.
   static String textWithSlots(String id) => '/api/texts/$id/with-slots';

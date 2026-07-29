@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../../app/router.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../../../core/storage/secure_storage.dart';
+import '../../../notifications/notification_service.dart';
 import '../../data/datasources/auth_api.dart';
 import '../../data/datasources/google_sign_in_api.dart';
 import '../../data/models/google_login_result.dart';
@@ -102,6 +105,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _openSession(Session session) async {
     await SecureStorage.writeSession(session.token, session.expiresAt);
+    // Now that there's a bearer token: the api reads this device's owner
+    // from it, so registering any earlier would be refused. Not awaited —
+    // notifications must not hold up the navigation.
+    unawaited(NotificationService.registerDevice());
     if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(AppRouter.search);
   }

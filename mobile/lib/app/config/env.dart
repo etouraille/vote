@@ -14,6 +14,23 @@ class Env {
   /// entry itself for what it has to match and why.
   static String get googleServerClientId => _required('GOOGLE_SERVER_CLIENT_ID');
 
+  /// Firebase Cloud Messaging settings — the same values a
+  /// google-services.json carries. See the .env file itself for how to
+  /// obtain them and for the full Android setup.
+  static String get firebaseApiKey => dotenv.env['FIREBASE_API_KEY'] ?? '';
+  static String get firebaseAppId => dotenv.env['FIREBASE_APP_ID'] ?? '';
+  static String get firebaseMessagingSenderId => dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '';
+  static String get firebaseProjectId => dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
+
+  /// Whether push notifications can be set up at all. Deliberately a
+  /// silent "no" rather than a throw like _required below: an app without
+  /// notifications configured must still run, it just stays quiet.
+  static bool get pushConfigured =>
+      firebaseApiKey.isNotEmpty &&
+      firebaseAppId.isNotEmpty &&
+      firebaseMessagingSenderId.isNotEmpty &&
+      firebaseProjectId.isNotEmpty;
+
   /// Reads a key that has no sensible fallback, throwing rather than
   /// defaulting to '' the way apiBaseUrl does.
   ///

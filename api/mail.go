@@ -22,28 +22,29 @@ type brevoEmailRequest struct {
 	TextContent string         `json:"textContent"`
 }
 
-func sendValidationEmail(toEmail string, code int) error {
+// mailConfigured reports whether Brevo has the two settings it needs. Used
+// to decide at startup whether the email notification channel can be
+// offered at all (see notify.EmailChannel), rather than registering a
+// channel that would fail on every send.
+func mailConfigured() bool {
+	return os.Getenv("BREVO_API_KEY") != "" && os.Getenv("MAIL_FROM") != ""
+}
+
+// sendEmail delivers one plain-text email through Brevo. Kept generic —
+// sendValidationEmail below is one caller, the notification email channel
+// is another.
+func sendEmail(toEmail, subject, textContent string) error {
 	apiKey := os.Getenv("BREVO_API_KEY")
 	from := os.Getenv("MAIL_FROM")
 	if apiKey == "" || from == "" {
 		return fmt.Errorf("brevo not configured: BREVO_API_KEY and MAIL_FROM must be set")
 	}
 
-	frontBaseURL := os.Getenv("FRONT_BASE_URL")
-	if frontBaseURL == "" {
-		frontBaseURL = "http://localhost:4300"
-	}
-
-	confirmLink := fmt.Sprintf("%s/confirm?email=%s&code=%d", frontBaseURL, url.QueryEscape(toEmail), code)
-
 	body := brevoEmailRequest{
-		Sender:  brevoContact{Email: from},
-		To:      []brevoContact{{Email: toEmail}},
-		Subject: "Confirmez votre compte",
-		TextContent: fmt.Sprintf(
-			"Bonjour,\n\nCliquez sur ce lien pour valider votre compte :\n%s\n\nCode de validation : %d\n",
-			confirmLink, code,
-		),
+		Sender:      brevoContact{Email: from},
+		To:          []brevoContact{{Email: toEmail}},
+		Subject:     subject,
+		TextContent: textContent,
 	}
 
 	payload, err := json.Marshal(body)
@@ -69,4 +70,18 @@ func sendValidationEmail(toEmail string, code int) error {
 		return fmt.Errorf("brevo API error: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func sendValidationEmail(toEmail string, code int) error {
+	frontBaseURL := os.Getenv("FRONT_BASE_URL")
+	if frontBaseURL == "" {
+		frontBaseURL = "http://localhost:4300"
+	}
+
+	confirmLink := fmt.Sprintf("%s/confirm?email=%s&code=%d", frontBaseURL, url.QueryEscape(toEmail), code)
+
+	return sendEmail(toEmail, "Confirmez votre compte", fmt.Sprintf(
+		"Bonjour,\n\nCliquez sur ce lien pour valider votre compte :\n%s\n\nCode de validation : %d\n",
+		confirmLink, code,
+	))
 }
