@@ -247,7 +247,7 @@ func main() {
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))
 	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo, notifier))
 
-	handler := withCORS(withBodyLimit(requireToken([]byte(jwtSecret), mux)))
+	handler := withCORS(withBodyLimit(requireToken([]byte(jwtSecret), store, rbacStore, mux)))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -305,11 +305,16 @@ type meResponse struct {
 	Permissions rbac.Permissions `json:"permissions"`
 }
 
-// meHandler reports who the caller is and what they're allowed to do. Root
-// and Permissions come straight from the already-verified JWT claims — no
-// lookup needed; the front end uses Root to decide whether to show the
-// admin backoffice. Email/Pseudo aren't in the token, so this is the one
-// field pair here that costs a DB read.
+// meHandler reports who the caller is and what they're allowed to do.
+//
+// Root and Permissions are read from the request's claims, which
+// requireToken has already refreshed from the rbac directory (see
+// currentPermissions) — so what this answers is what the caller may do now,
+// not what they could when they signed in. That is what lets the front end
+// hide an action the moment it is revoked, and show one the moment it is
+// granted, without a sign-out in between.
+//
+// The front end uses Root to decide whether to offer the backoffice.
 func meHandler(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsFromContext(r)

@@ -41,7 +41,7 @@ var publicAPIPaths = map[string]bool{
 // handlers to read (see claimsFromContext) — both to identify the caller
 // (Claims.Subject, the api user ID) and to authorize gated actions
 // (Claims.Allows).
-func requireToken(jwtSecret []byte, next http.Handler) http.Handler {
+func requireToken(jwtSecret []byte, store *Store, rbacStore *rbac.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api") || publicAPIPaths[r.URL.Path] {
 			next.ServeHTTP(w, r)
@@ -64,9 +64,49 @@ func requireToken(jwtSecret []byte, next http.Handler) http.Handler {
 			return
 		}
 
+		// What the token says a caller may do is only what was true when
+		// they signed in. Refreshed here, once, so every handler downstream
+		// reads live rights without any of them having to know — and so a
+		// change made in the backoffice takes effect on the next request
+		// rather than on the next sign-in.
+		perms, root := currentPermissions(r.Context(), store, rbacStore, claims)
+		claims.Perms, claims.Root = perms.Bits(), root
+
 		ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// currentPermissions resolves what a caller may do *now*, from the rbac
+// directory rather than from the token they arrived with.
+//
+// Rights used to be read straight off the JWT, which meant a grant or a
+// revocation in the backoffice did nothing at all until the person signed
+// in again: an administrator ticked a box, the user saw no change, and
+// nothing in either interface explained the delay.
+//
+// Two point lookups, because the two directories are deliberately separate
+// (see the rbac package doc): the api's own user row carries the rbac uuid,
+// the rbac entry carries the rights.
+//
+// A failed lookup falls back to the token's own claims rather than
+// refusing. That is precisely what the api trusted until now, so an
+// unreachable directory degrades to the previous behaviour instead of
+// locking everyone out — at the cost of a revocation not being enforced
+// while it is down.
+func currentPermissions(ctx context.Context, store *Store, rbacStore *rbac.Store, claims rbac.Claims) (rbac.Permissions, bool) {
+	fallback := rbac.PermissionsFromBits(claims.Perms)
+
+	user, err := store.UserByID(ctx, claims.Subject)
+	if err != nil || user.RbacUUID == nil {
+		return fallback, claims.Root
+	}
+
+	rbacUser, err := rbacStore.GetUser(*user.RbacUUID)
+	if err != nil {
+		return fallback, claims.Root
+	}
+	return rbacUser.Permissions, rbacUser.Root
 }
 
 // claimsFromContext fetches the rbac.Claims requireToken attached to r's
