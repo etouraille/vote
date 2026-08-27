@@ -26,6 +26,20 @@ var (
 	// entry in the search corpus, and a version chain one step longer, all
 	// saying exactly what the previous version already said.
 	ErrEmptyRound = errors.New("no proposal has been made in this round")
+
+	// ErrOverlappingSlot is returned by ProposeEdit for a range that
+	// partially covers a slot already open in the round.
+	//
+	// It is the one structural rule on where a zone may be opened: anyone
+	// may open one anywhere, but two of them may not share a character.
+	// Overlapping ones would make the outcome ambiguous — two winning
+	// fragments claiming the same stretch, with no rule saying which one
+	// spliceContent should write there.
+	//
+	// A sentinel rather than a bare message, so callers can tell this
+	// client mistake from a genuine failure and say something useful about
+	// it instead of relaying rune offsets.
+	ErrOverlappingSlot = errors.New("this range overlaps a zone already open in this round")
 )
 
 // ErrTextSuperseded is returned by ProposeEdit when TextID has already been
@@ -648,7 +662,7 @@ func resolveSlot(existing []Slot, start, end int) (slotID string, isNew bool, er
 			return s.ID, false, nil
 		}
 		if start < s.End && end > s.Start {
-			return "", false, fmt.Errorf("range [%d,%d) overlaps existing slot %q [%d,%d)", start, end, s.ID, s.Start, s.End)
+			return "", false, fmt.Errorf("%w: [%d,%d) overlaps slot %q [%d,%d)", ErrOverlappingSlot, start, end, s.ID, s.Start, s.End)
 		}
 	}
 	id, err := newID()

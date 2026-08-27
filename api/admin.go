@@ -15,8 +15,7 @@ type permissionsRequest struct {
 	CanVote          bool `json:"canVote"`
 	CanCreateText    bool `json:"canCreateText"`
 	CanCloseText     bool `json:"canCloseText"`
-	CanSelect        bool `json:"canSelect"`
-	CanEditSelection bool `json:"canEditSelection"`
+	CanEditText      bool `json:"canEditText"`
 	CanUpdateText    bool `json:"canUpdateText"`
 	CanSubscribe     bool `json:"canSubscribe"`
 }
@@ -104,8 +103,7 @@ func assignPermissionsHandler(store *Store, rbacStore *rbac.Store) http.HandlerF
 			CanVote:          req.CanVote,
 			CanCreateText:    req.CanCreateText,
 			CanCloseText:     req.CanCloseText,
-			CanSelect:        req.CanSelect,
-			CanEditSelection: req.CanEditSelection,
+			CanEditText:      req.CanEditText,
 			CanUpdateText:    req.CanUpdateText,
 			CanSubscribe:     req.CanSubscribe,
 		}

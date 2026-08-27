@@ -1,6 +1,7 @@
 package rbac
 
 import (
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -11,7 +12,7 @@ func TestRootUserCanDoEverything(t *testing.T) {
 	user := &User{Root: true}
 	for _, action := range []Action{
 		ActionVote, ActionCreateText, ActionCloseText,
-		ActionSelect, ActionEditSelection, ActionUpdateText,
+		ActionEditText, ActionUpdateText, ActionSubscribe,
 	} {
 		if !user.Can(action) {
 			t.Errorf("root user should be able to %s", action)
@@ -220,5 +221,69 @@ func TestConcurrentCreatesDontCorruptOrDuplicate(t *testing.T) {
 
 	if got := len(store.ListUsers()); got != n {
 		t.Fatalf("expected %d users after %d concurrent creates, got %d", n, n, got)
+	}
+}
+
+// TestPermissionsReadsLegacyEditingKeys covers the one way merging
+// canSelect and canEditSelection into canEditText could have gone wrong: a
+// stored row written before the merge would stop matching any field, and
+// every account granted the right to edit would come back unable to — no
+// error, no trace, just silently stripped.
+func TestPermissionsReadsLegacyEditingKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		want bool
+	}{
+		{"legacy select", `{"canSelect":true}`, true},
+		{"legacy edit-selection", `{"canEditSelection":true}`, true},
+		{"legacy both", `{"canSelect":true,"canEditSelection":true}`, true},
+		{"legacy neither", `{"canSelect":false,"canEditSelection":false}`, false},
+		{"current key", `{"canEditText":true}`, true},
+		{"absent entirely", `{"canVote":true}`, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var perms Permissions
+			if err := json.Unmarshal([]byte(tc.json), &perms); err != nil {
+				t.Fatal(err)
+			}
+			if perms.CanEditText != tc.want {
+				t.Fatalf("CanEditText = %v, want %v (from %s)", perms.CanEditText, tc.want, tc.json)
+			}
+		})
+	}
+
+	// The other fields must survive the custom unmarshaller — the usual
+	// trap when one is written by hand.
+	var perms Permissions
+	if err := json.Unmarshal([]byte(`{"canVote":true,"canSubscribe":true,"canUpdateText":true}`), &perms); err != nil {
+		t.Fatal(err)
+	}
+	if !perms.CanVote || !perms.CanSubscribe || !perms.CanUpdateText {
+		t.Fatalf("unrelated fields lost: %+v", perms)
+	}
+}
+
+// TestPermissionBitsAreFrozen pins the numeric values a signed token
+// carries. Merging two rights removed a bit from the middle; had the block
+// stayed on iota, everything above it would have shifted down and every
+// token already issued would have decoded as a different set of rights.
+func TestPermissionBitsAreFrozen(t *testing.T) {
+	for _, tc := range []struct {
+		bit  PermBit
+		want PermBit
+	}{
+		{PermVote, 1},
+		{PermCreateText, 2},
+		{PermCloseText, 4},
+		{PermEditText, 8},
+		{PermUpdateText, 32},
+		{PermSubscribe, 64},
+	} {
+		if tc.bit != tc.want {
+			t.Errorf("bit = %d, want %d — moving one invalidates tokens already signed", tc.bit, tc.want)
+		}
 	}
 }

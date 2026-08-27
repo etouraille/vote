@@ -2,7 +2,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { docFromText, docFromTextWithHighlights, EditorComponent, TextSelection } from '../../component/app-editor/app-editor';
+import {
+  docFromText,
+  docFromTextWithHighlights,
+  EditorComponent,
+  TextSelection,
+} from '../../component/app-editor/app-editor';
 import { AuthService } from '../../service/auth';
 import { LastTextStorage } from '../../service/last-text-storage';
 import { TextService } from '../../service/text';
@@ -21,7 +26,10 @@ const CONTEXT_WORD_COUNT = 100;
 // match (a re-selection of an already-open zone joins it rather than
 // conflicting) — same distinction queel's own resolveSlot makes server-side,
 // checked here too so a doomed-to-be-rejected proposal never gets that far.
-function overlapsPartially(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
+function overlapsPartially(
+  a: { start: number; end: number },
+  b: { start: number; end: number },
+): boolean {
   if (a.start === b.start && a.end === b.end) return false;
   return a.start < b.end && a.end > b.start;
 }
@@ -48,10 +56,10 @@ export class EditorPage {
   // create-a-new-text case (no savedTextId yet); see save().
   readonly canCreateText = signal(false);
 
-  // Gates "Sélectionner du texte à amender": either permission lets a user
-  // start a proposal (canSelect for a brand new range, canEditSelection for
-  // one already open) — the editor can't know in advance which applies
-  // until a range is actually picked, so either is enough to offer it.
+  // Gates "Sélectionner du texte à amender". One right covers both kinds of
+  // zone — one nobody had opened, and one already open (see the api's
+  // proposeEditHandler) — so the editor no longer has to guess which
+  // applies before a range is even picked.
   readonly canAmendText = signal(false);
 
   readonly loading = signal(false);
@@ -87,7 +95,7 @@ export class EditorPage {
   constructor() {
     this.auth.me().subscribe((me) => {
       this.canCreateText.set(me.root || me.permissions.canCreateText);
-      this.canAmendText.set(me.root || me.permissions.canSelect || me.permissions.canEditSelection);
+      this.canAmendText.set(me.root || me.permissions.canEditText);
     });
 
     const id = this.route.snapshot.queryParamMap.get('id');
@@ -202,7 +210,10 @@ export class EditorPage {
         const supersededBy = err.error?.supersededBy;
         if (err.status === 409 && supersededBy) {
           this.closeProposal();
-          this.router.navigate(['/editor'], { queryParams: { id: supersededBy }, replaceUrl: true });
+          this.router.navigate(['/editor'], {
+            queryParams: { id: supersededBy },
+            replaceUrl: true,
+          });
           this.loadExistingText(supersededBy);
           return;
         }
@@ -229,7 +240,7 @@ export class EditorPage {
       },
       error: (err: HttpErrorResponse) => {
         this.saving.set(false);
-        this.saveError.set(err.error?.error ?? "Erreur lors de la sauvegarde");
+        this.saveError.set(err.error?.error ?? 'Erreur lors de la sauvegarde');
       },
     });
   }

@@ -11,7 +11,10 @@
 // transactions and locking to do that safely.
 package rbac
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Permissions are the individual actions a non-root user may be granted.
 // A root User bypasses all of them — see User.Can.
@@ -26,15 +29,17 @@ type Permissions struct {
 	// finalizing it (Repository.CloseRound).
 	CanCloseText bool `json:"canCloseText"`
 
-	// CanSelect allows carving out a new slot — selecting a [start, end)
-	// range of a text that doesn't already overlap an open one. This is the
-	// more consequential half of Repository.ProposeEdit: it locks in a
-	// range every competing proposal for that slot must then respect.
-	CanSelect bool `json:"canSelect"`
-
-	// CanEditSelection allows proposing content for a slot, whether newly
-	// selected or already open — the other half of Repository.ProposeEdit.
-	CanEditSelection bool `json:"canEditSelection"`
+	// CanEditText allows proposing a change to a text: opening a zone
+	// nobody had opened yet, and competing on one already open. Both halves
+	// of Repository.ProposeEdit, deliberately one right.
+	//
+	// They were two — canSelect and canEditSelection — on the theory that
+	// opening a zone is more consequential than competing on one. It made
+	// the same author welcome on one passage and refused on the next, for a
+	// difference no interface ever showed. Where a zone may go is settled
+	// by one structural rule instead, and by no privilege: it must not
+	// overlap another (see queel.ErrOverlappingSlot).
+	CanEditText bool `json:"canEditText"`
 
 	// CanUpdateText allows Repository.UpdateText — overwriting a text's
 	// content directly, bypassing the voting workflow entirely. Kept
@@ -53,20 +58,57 @@ type Permissions struct {
 	CanSubscribe bool `json:"canSubscribe"`
 }
 
+// UnmarshalJSON reads a stored Permissions, including ones written before
+// canSelect and canEditSelection merged into canEditText.
+//
+// Without it the merge would be quietly destructive: the two old keys would
+// simply not match any field any more, and every account that had been
+// granted the right to edit would come back unable to. Nothing would fail —
+// they would just stop being allowed, with no trace of why.
+//
+// Either old key grants the new right, since either was enough to reach the
+// editor. The next write normalises the row; until then this keeps reading
+// it correctly, so no migration has to run before the code ships.
+func (p *Permissions) UnmarshalJSON(data []byte) error {
+	// The alias sheds this method, or unmarshalling into it would recurse.
+	type alias Permissions
+	var raw struct {
+		alias
+		LegacySelect        *bool `json:"canSelect"`
+		LegacyEditSelection *bool `json:"canEditSelection"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*p = Permissions(raw.alias)
+	if (raw.LegacySelect != nil && *raw.LegacySelect) ||
+		(raw.LegacyEditSelection != nil && *raw.LegacyEditSelection) {
+		p.CanEditText = true
+	}
+	return nil
+}
+
 // PermBit is one bit in a Unix-style permission mask — a compact encoding
 // of Permissions meant to travel inside an auth token (a JWT claim, say) so
 // that a caller who already trusts the token doesn't need to round-trip to
 // queel's rbac socket on every request just to know what a user may do.
 type PermBit uint8
 
+// Written as explicit positions rather than 1 << iota. When canSelect and
+// canEditSelection merged into CanEditText, dropping one from an iota block
+// would have shifted every bit above it down by one — and a token already
+// issued would then have decoded as a different set of rights entirely.
+// Freezing the positions keeps every mask ever signed readable; 1 << 4 is
+// simply retired.
 const (
-	PermVote PermBit = 1 << iota
-	PermCreateText
-	PermCloseText
-	PermSelect
-	PermEditSelection
-	PermUpdateText
-	PermSubscribe
+	PermVote       PermBit = 1 << 0
+	PermCreateText PermBit = 1 << 1
+	PermCloseText  PermBit = 1 << 2
+	PermEditText   PermBit = 1 << 3
+	// 1 << 4 was PermEditSelection, merged into PermEditText above.
+	PermUpdateText PermBit = 1 << 5
+	PermSubscribe  PermBit = 1 << 6
 )
 
 // Bits packs p into a single byte, one bit per permission — see PermBit.
@@ -81,11 +123,8 @@ func (p Permissions) Bits() PermBit {
 	if p.CanCloseText {
 		b |= PermCloseText
 	}
-	if p.CanSelect {
-		b |= PermSelect
-	}
-	if p.CanEditSelection {
-		b |= PermEditSelection
+	if p.CanEditText {
+		b |= PermEditText
 	}
 	if p.CanUpdateText {
 		b |= PermUpdateText
@@ -102,8 +141,7 @@ func PermissionsFromBits(b PermBit) Permissions {
 		CanVote:          b&PermVote != 0,
 		CanCreateText:    b&PermCreateText != 0,
 		CanCloseText:     b&PermCloseText != 0,
-		CanSelect:        b&PermSelect != 0,
-		CanEditSelection: b&PermEditSelection != 0,
+		CanEditText:      b&PermEditText != 0,
 		CanUpdateText:    b&PermUpdateText != 0,
 		CanSubscribe:     b&PermSubscribe != 0,
 	}
@@ -119,8 +157,7 @@ const (
 	ActionVote          Action = "vote"
 	ActionCreateText    Action = "createText"
 	ActionCloseText     Action = "closeText"
-	ActionSelect        Action = "select"
-	ActionEditSelection Action = "editSelection"
+	ActionEditText      Action = "editText"
 	ActionUpdateText    Action = "updateText"
 	ActionSubscribe     Action = "subscribe"
 )
@@ -147,10 +184,8 @@ func (u *User) Can(action Action) bool {
 		return u.Permissions.CanCreateText
 	case ActionCloseText:
 		return u.Permissions.CanCloseText
-	case ActionSelect:
-		return u.Permissions.CanSelect
-	case ActionEditSelection:
-		return u.Permissions.CanEditSelection
+	case ActionEditText:
+		return u.Permissions.CanEditText
 	case ActionUpdateText:
 		return u.Permissions.CanUpdateText
 	case ActionSubscribe:
@@ -172,10 +207,8 @@ func (b PermBit) Allows(action Action) bool {
 		return b&PermCreateText != 0
 	case ActionCloseText:
 		return b&PermCloseText != 0
-	case ActionSelect:
-		return b&PermSelect != 0
-	case ActionEditSelection:
-		return b&PermEditSelection != 0
+	case ActionEditText:
+		return b&PermEditText != 0
 	case ActionUpdateText:
 		return b&PermUpdateText != 0
 	case ActionSubscribe:

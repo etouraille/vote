@@ -35,8 +35,8 @@ type textSupersededResponse struct {
 // round is closed and voted fragments are decided.
 //
 // Which permission this requires depends on whether the range is brand new
-// or already an open slot in the current round (see rbac.ActionSelect vs
-// rbac.ActionEditSelection) — carving out a new range is the more
+// or already an open slot in the current round — carving out a new range
+// used to be the more
 // consequential half of the operation, so it's gated separately from just
 // proposing content for a range someone already selected.
 func proposeEditHandler(repo *queel.Repository, notifier *textNotifier) http.HandlerFunc {
@@ -73,20 +73,10 @@ func proposeEditHandler(repo *queel.Repository, notifier *textNotifier) http.Han
 			return
 		}
 
-		action := rbac.ActionSelect
-		if round, err := repo.CurrentRound(textID); err == nil {
-			for _, slot := range round.Slots {
-				if slot.Start == req.Start && slot.End == req.End {
-					action = rbac.ActionEditSelection
-					break
-				}
-			}
-		} else if !errors.Is(err, queel.ErrNotFound) {
-			writeError(w, http.StatusInternalServerError, "erreur serveur")
-			return
-		}
-		if !claims.Allows(action) {
-			writeError(w, http.StatusForbidden, "droits insuffisants")
+		// One right to edit, whichever zone is aimed at. Where a zone may
+		// be opened is settled by one structural rule and no privilege: it
+		// must not overlap another (ErrOverlappingSlot).
+		if !requirePermission(w, r, rbac.ActionEditText) {
 			return
 		}
 
@@ -104,8 +94,16 @@ func proposeEditHandler(repo *queel.Repository, notifier *textNotifier) http.Han
 				})
 				return
 			}
+			if errors.Is(err, queel.ErrOverlappingSlot) {
+				// The rune offsets the underlying error carries mean
+				// nothing to a reader; what they need is the rule and what
+				// to do about it.
+				writeError(w, http.StatusBadRequest,
+					"cette sélection empiète sur une zone déjà ouverte dans ce tour : choisissez-en une autre, ou proposez sur la zone existante")
+				return
+			}
 			// The only other errors ProposeEdit returns are client-caused
-			// (invalid range, overlapping slot) and safe to relay as-is.
+			// (an invalid range) and safe to relay as-is.
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

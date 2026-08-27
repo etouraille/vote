@@ -551,3 +551,64 @@ func TestProposeEditRequiresSubscription(t *testing.T) {
 		t.Fatalf("expected the author to propose on their own text, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestProposeEditIsOneRightWhicheverZone pins that opening a zone nobody
+// had opened and competing on one already open are the same act as far as
+// rights go, and that where a zone may be opened is settled by overlap
+// alone. They used to be two rights, which let the same author through on
+// one passage and turned them away on the next.
+func TestProposeEditIsOneRightWhicheverZone(t *testing.T) {
+	content := "Nous le peuple francais declare."
+	francais := strings.Index(content, "francais")
+	peuple := strings.Index(content, "peuple")
+
+	repo := newTestRepo(t)
+	handler := NewHandler(repo, testSecret)
+
+	text, err := repo.CreateText("Constitution", content, "author-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("alice", text.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	token := subscribeTokenFor(t, rbac.Permissions{CanEditText: true, CanSubscribe: true})
+	propose := func(start, end int, wording string) *httptest.ResponseRecorder {
+		body := strings.NewReader(fmt.Sprintf(
+			`{"start":%d,"end":%d,"content":%q,"authorId":"alice"}`, start, end, wording))
+		req := httptest.NewRequest(http.MethodPost, "/texts/"+text.ID+"/propose-edit", body)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Opening a zone nobody had opened.
+	if rec := propose(francais, francais+len("francais"), "français"); rec.Code != http.StatusCreated {
+		t.Fatalf("opening a new zone: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Competing on the one just opened — the same right covers it.
+	if rec := propose(francais, francais+len("francais"), "hexagonal"); rec.Code != http.StatusCreated {
+		t.Fatalf("competing on an open zone: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// A second zone elsewhere is fine: only overlap is refused.
+	if rec := propose(peuple, peuple+len("peuple"), "citoyen"); rec.Code != http.StatusCreated {
+		t.Fatalf("opening a disjoint zone: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Straddling that zone is not — and says so as a client error, not a 500.
+	if rec := propose(peuple+2, peuple+len("peuple")+4, "x"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("overlapping zone: expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// An account without the right gets nowhere, on either kind of zone.
+	voterOnly := subscribeTokenFor(t, rbac.Permissions{CanVote: true, CanSubscribe: true})
+	body := strings.NewReader(fmt.Sprintf(`{"start":0,"end":4,"content":"Nous,","authorId":"alice"}`))
+	req := httptest.NewRequest(http.MethodPost, "/texts/"+text.ID+"/propose-edit", body)
+	req.Header.Set("Authorization", "Bearer "+voterOnly)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("without the editing right: expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

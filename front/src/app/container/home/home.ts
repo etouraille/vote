@@ -190,7 +190,7 @@ export class HomePage implements OnInit {
 
   ngOnInit(): void {
     this.auth.me().subscribe((me) => {
-      this.canAmendText.set(me.root || me.permissions.canSelect || me.permissions.canEditSelection);
+      this.canAmendText.set(me.root || me.permissions.canEditText);
       this.canVote.set(me.root || me.permissions.canVote);
       this.canCloseText.set(me.root || me.permissions.canCloseText);
       this.canDeleteText.set(me.root || me.permissions.canCreateText);

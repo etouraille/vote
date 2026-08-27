@@ -75,7 +75,10 @@ func checkAction(w http.ResponseWriter, r *http.Request, jwtSecret []byte, actio
 		return false
 	}
 	if !claims.Allows(action) {
-		writeError(w, http.StatusForbidden, "insufficient permissions")
+		// Naming the action costs nothing here — checkAction already has it
+		// — and saves an embedder from guessing which of the six rights a
+		// refusal was about.
+		writeError(w, http.StatusForbidden, "insufficient permissions: "+string(action))
 		return false
 	}
 	return true
@@ -135,6 +138,11 @@ func writeRepositoryError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, queel.ErrNoOpenRound), errors.Is(err, queel.ErrEmptyRound):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, queel.ErrOverlappingSlot):
+		// A client mistake, not a server failure — it used to fall through
+		// to the 500 below, which told the caller nothing and blamed the
+		// wrong side.
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.As(err, &superseded):
 		// supersededBy names the current version — enough for a caller to
 		// retry there directly instead of just getting a dead end.
@@ -340,11 +348,9 @@ type proposeEditRequest struct {
 	AuthorID string `json:"authorId"`
 }
 
-// proposeEditHandler requires rbac.ActionSelect if [start,end) isn't
-// already an open slot in the text's current round, or the less
-// consequential rbac.ActionEditSelection if it is — mirroring the
-// distinction rbac.Permissions itself documents between CanSelect and
-// CanEditSelection.
+// proposeEditHandler requires rbac.ActionEditText, whether the range opens
+// a zone nobody had opened or competes on one already open: the two are the
+// same act as far as rights go.
 func proposeEditHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		textID := r.PathValue("id")
@@ -355,22 +361,13 @@ func proposeEditHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFu
 			return
 		}
 
-		if len(jwtSecret) > 0 {
-			action := rbac.ActionSelect
-			if round, err := repo.CurrentRound(textID); err == nil {
-				for _, slot := range round.Slots {
-					if slot.Start == req.Start && slot.End == req.End {
-						action = rbac.ActionEditSelection
-						break
-					}
-				}
-			} else if !errors.Is(err, queel.ErrNotFound) {
-				writeError(w, http.StatusInternalServerError, "internal error")
-				return
-			}
-			if !checkAction(w, r, jwtSecret, action) {
-				return
-			}
+		// One right to edit, whichever zone is aimed at: opening one nobody
+		// had opened and competing on one already open are the same act as
+		// far as rights go. Where a zone may be opened is settled by one
+		// structural rule and no privilege — it must not overlap another
+		// (queel.ErrOverlappingSlot).
+		if !checkAction(w, r, jwtSecret, rbac.ActionEditText) {
+			return
 		}
 
 		// This route already names its author, so unlike the three below
