@@ -15,9 +15,41 @@ import { schema as basicSchema } from "prosemirror-schema-basic";
 
 export const DEFAULT_HIGHLIGHT_COLOR = '#fef08a';
 
+// The document is saved with getText(), which serialises it through
+// doc.textBetween: that keeps the text and the block boundaries and drops
+// everything else. Content reaches the api as a plain string, and a Slot is
+// a range of rune offsets into it (see queel's model.go) — which is why it
+// is plain, not merely how it happens to be.
+//
+// So the schema accepts only what survives that trip. Anything richer would
+// render in the editor, look saved, and be gone by the next reload; pasted
+// markup is stripped on the way in instead, where the loss is visible at
+// once rather than discovered later.
+//
+// Removed rather than listed from scratch, so a node a future ProseMirror
+// release adds to the basic schema is inherited: what is recorded here is
+// which ones this editor refuses, not which ones existed the day it was
+// written.
+const nodes = basicSchema.spec.nodes
+  .remove('heading')
+  .remove('blockquote')
+  .remove('code_block')
+  .remove('horizontal_rule')
+  .remove('image')
+  // hard_break is the quiet one: textBetween drops a leaf node outright, so
+  // a shift-Enter break would vanish without even flattening into a line
+  // the way a heading does.
+  .remove('hard_break');
+
+const marks = basicSchema.spec.marks
+  .remove('strong')
+  .remove('em')
+  .remove('code')
+  .remove('link');
+
 const schema = new Schema({
-  nodes: basicSchema.spec.nodes,
-  marks: basicSchema.spec.marks.addToEnd('highlight', {
+  nodes,
+  marks: marks.addToEnd('highlight', {
     attrs: { color: { default: DEFAULT_HIGHLIGHT_COLOR } },
     parseDOM: [
       {
