@@ -1,10 +1,230 @@
-<div class="min-h-screen bg-white">
-  <header class="mx-auto flex w-full max-w-[63rem] items-center px-4 pt-6 pb-3">
-    <h1 class="text-sm font-medium text-slate-900">Accueil</h1>
-  </header>
+<!-- Two columns filling the height app.html hands down: the text being read
+     on the left, the thread of posted texts on the right. Each scrolls on
+     its own — the page itself never does. -->
+<div class="flex h-full min-h-0">
+  <!-- min-w-0 so a long unbroken word in a text can't push the column wider
+       than its share and squeeze the thread off-screen. -->
+  <section class="flex min-h-0 min-w-0 flex-1 flex-col">
+    @if (selected(); as item) {
+      <!-- Title above, actions below, the text between them — both bars
+           pinned so only the text scrolls and the buttons stay reachable
+           however long it runs. -->
+      <header class="shrink-0 border-b border-slate-200 px-6 py-4">
+        <h1 class="text-lg font-semibold text-slate-900">{{ item.title }}</h1>
+      </header>
 
-  <div class="relative mx-auto max-w-[63rem] px-4">
-    <div class="relative mx-auto max-w-sm">
+      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        <!-- Above the text, as the panel this replaced showed them: what
+             the displayed version's round changed, and by how many votes.
+             Restored per-version rather than for the whole chain, since the
+             arrows now walk it one version at a time. -->
+        @if (displayedSlots().length > 0) {
+          <ul
+            class="mb-6 flex max-w-3xl flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50 p-3"
+          >
+            @for (slot of displayedSlots(); track slot.slotId) {
+              <li class="text-sm">
+                <span class="rounded bg-red-100 px-1 text-red-800 line-through">{{
+                  slot.original
+                }}</span>
+                <span class="mx-1 text-slate-400">&rarr;</span>
+                <span class="rounded bg-yellow-200 px-1 font-medium text-yellow-900">{{
+                  slot.winner
+                }}</span>
+                <span class="ml-1 text-xs text-slate-500">
+                  {{ slot.votes }} vote{{ slot.votes > 1 ? 's' : '' }}
+                </span>
+              </li>
+            }
+          </ul>
+        }
+
+        @if (loadingContent()) {
+          <p class="text-sm text-slate-400">Chargement…</p>
+        } @else if (contentError(); as error) {
+          <p class="text-sm text-red-600">{{ error }}</p>
+        } @else {
+          <!-- whitespace-pre-wrap: content is stored as plain text, so its
+               own line breaks are all the structure it has. max-w-3xl keeps
+               the measure readable on a wide screen instead of running the
+               full width of the column. -->
+          <p class="max-w-3xl text-sm leading-relaxed whitespace-pre-wrap text-slate-700">
+            {{ readingContent() }}
+          </p>
+        }
+      </div>
+
+      <footer class="shrink-0 border-t border-slate-200 px-6 py-4">
+        @if (readingPastVersion()) {
+          <!-- Only the navigation on an archived version: every other
+               action targets the current one, and offering them beside a
+               text they would not apply to is worse than offering nothing. -->
+          <div class="flex flex-wrap items-center gap-1.5">
+            <!-- Walking the chain of versions, in place of the history
+               panel this replaces. Disabled at each end rather than hidden,
+               so the controls don't shift as you move through. -->
+            <button
+              type="button"
+              (click)="previousVersion()"
+              [disabled]="!canGoPreviousVersion()"
+              title="Version précédente"
+              aria-label="Version précédente"
+              class="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
+            >
+              &larr;
+            </button>
+            @if (displayedRoundNumber(); as round) {
+              <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                Tour {{ round }}
+              </span>
+            }
+            <button
+              type="button"
+              (click)="nextVersion()"
+              [disabled]="!canGoNextVersion()"
+              title="Version suivante"
+              aria-label="Version suivante"
+              class="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
+            >
+              &rarr;
+            </button>
+            <span class="ml-2 text-xs text-amber-800">Version archivée — lecture seule</span>
+          </div>
+        } @else {
+          <div class="flex flex-wrap items-center gap-1.5">
+            <!-- Walking the chain of versions, in place of the history
+               panel this replaces. Disabled at each end rather than hidden,
+               so the controls don't shift as you move through. -->
+            <button
+              type="button"
+              (click)="previousVersion()"
+              [disabled]="!canGoPreviousVersion()"
+              title="Version précédente"
+              aria-label="Version précédente"
+              class="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
+            >
+              &larr;
+            </button>
+            @if (displayedRoundNumber(); as round) {
+              <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                Tour {{ round }}
+              </span>
+            }
+            <button
+              type="button"
+              (click)="nextVersion()"
+              [disabled]="!canGoNextVersion()"
+              title="Version suivante"
+              aria-label="Version suivante"
+              class="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
+            >
+              &rarr;
+            </button>
+            @if (canAmendText()) {
+              <a
+                [routerLink]="['/editor']"
+                [queryParams]="{ id: item.textId }"
+                class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+              >
+                Éditer
+              </a>
+            }
+            @if (canVote()) {
+              <!-- A round opens with each new version and stays empty until
+                   somebody proposes against it, so "there is a round" does
+                   not mean "there is something to vote on". Sending the
+                   reader to the vote page to be told that is a wasted trip;
+                   it is said here instead. -->
+              @if (voteAvailable()) {
+                <a
+                  [routerLink]="['/vote']"
+                  [queryParams]="{ id: item.textId }"
+                  class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+                >
+                  Voter
+                </a>
+              } @else {
+                <span class="text-xs text-slate-500"
+                  >Rien à voter : aucune modification proposée sur ce tour.</span
+                >
+              }
+            }
+            @if (canCloseText()) {
+              <!-- No "round clos" state to show any more: closing swaps this
+                 entry for the version it produced, which carries a round of
+                 its own straight away. -->
+              <button
+                type="button"
+                (click)="openCloseRoundPopup(item)"
+                [disabled]="closingTextId() === item.textId"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+              >
+                {{ closingTextId() === item.textId ? 'Clôture…' : 'Clore un round' }}
+              </button>
+            }
+            @if (canDeleteText()) {
+              <button
+                type="button"
+                (click)="deleteText(item)"
+                [disabled]="deletingTextId() === item.textId"
+                class="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
+              >
+                {{ deletingTextId() === item.textId ? 'Suppression…' : 'Supprimer' }}
+              </button>
+            }
+
+            <!-- Following no longer gates the actions above, so this sits
+               alongside them rather than in place of them — it only adds
+               notifications and the "Mes abonnements" listing now. -->
+            @if (!item.subscribed && canSubscribe()) {
+              <button
+                type="button"
+                (click)="subscribe(item)"
+                [disabled]="subscribingTextId() === item.textId"
+                class="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+              >
+                {{ subscribingTextId() === item.textId ? 'Abonnement…' : "S'abonner" }}
+              </button>
+            } @else if (item.subscribed) {
+              <span class="ml-auto text-xs text-emerald-700">Abonné</span>
+            }
+          </div>
+        }
+        @if (justClosedInto() === item.textId) {
+          <p class="mt-2 text-xs text-emerald-700">
+            Tour clos : voici la nouvelle version, les propositions majoritaires y sont intégrées.
+          </p>
+        }
+        @if (scheduledCloseAt()[item.textId]; as date) {
+          <p class="mt-2 text-xs text-amber-700">
+            Clôture programmée le {{ date | date: 'dd/MM/yyyy' }}.
+          </p>
+        }
+        @if (subscribeErrors()[item.textId]; as error) {
+          <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+        }
+        @if (closeErrors()[item.textId]; as error) {
+          <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+        }
+        @if (deleteErrors()[item.textId]; as error) {
+          <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+        }
+      </footer>
+    } @else {
+      <div class="flex flex-1 items-center justify-center p-8">
+        <p class="text-sm text-slate-400">
+          @if (searchResults()) {
+            Aucun texte finalisé ne correspond à cette recherche.
+          } @else {
+            Sélectionnez un texte dans le fil à droite.
+          }
+        </p>
+      </div>
+    }
+  </section>
+
+  <aside class="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-slate-50">
+    <div class="shrink-0 border-b border-slate-200 p-3">
       <form (ngSubmit)="search()" class="flex items-center gap-2">
         <label class="sr-only" for="search-query">Rechercher</label>
         <input
@@ -13,255 +233,138 @@
           name="search"
           [(ngModel)]="searchQuery"
           placeholder="Rechercher un texte…"
-          class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          class="block w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
         />
         <button
           type="submit"
           [disabled]="searching()"
-          class="shrink-0 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
+          class="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50"
         >
-          {{ searching() ? 'Recherche…' : 'Rechercher' }}
+          {{ searching() ? '…' : 'OK' }}
         </button>
       </form>
 
       @if (searchError(); as error) {
         <p class="mt-2 text-xs text-red-600">{{ error }}</p>
       }
+
+      <!-- Only while a search is showing: without it the thread would be
+           stuck on the results with no way back to the latest texts. -->
+      @if (searchResults(); as results) {
+        <div class="mt-2 flex items-center justify-between">
+          <span class="text-xs text-slate-500">{{ results.length }} résultat(s)</span>
+          <button
+            type="button"
+            (click)="clearSearch()"
+            class="text-xs text-slate-500 hover:text-slate-800"
+          >
+            Derniers textes ✕
+          </button>
+        </div>
+      }
     </div>
 
-    @if (recentTexts().length > 0) {
-      <section
-        class="mt-6 pb-10 transition duration-200"
-        [class.blur-sm]="searchResults()"
-        [class.opacity-40]="searchResults()"
-        [class.pointer-events-none]="searchResults()"
-      >
-        <h2 class="mb-3 text-sm font-medium text-slate-500">Derniers textes</h2>
-        <div class="max-h-[26rem] snap-y snap-proximity overflow-y-auto pr-1" (scroll)="onRecentTextsScroll($event)">
-          <div class="grid grid-cols-2 gap-4">
-          @for (card of recentTexts(); track card.textId) {
-            <div class="group relative h-[21rem] snap-start overflow-hidden rounded-lg border border-slate-200 p-7">
-              <h3 class="truncate pr-16 text-base font-semibold text-slate-900">{{ card.title }}</h3>
-              <p class="mt-2 line-clamp-9 pr-16 text-sm text-slate-500">{{ card.excerpt }}</p>
-
-              <div
-                class="absolute top-2 right-2 max-w-[calc(100%-1rem)] flex flex-row flex-wrap items-center justify-end gap-1.5 rounded-md bg-white/90 p-1 opacity-0 shadow-sm backdrop-blur-sm transition duration-200 group-hover:opacity-100"
-              >
-                @if (!card.subscribed) {
-                  <button
-                    type="button"
-                    (click)="subscribe(card)"
-                    [disabled]="subscribingTextId() === card.textId"
-                    class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm disabled:opacity-50"
-                  >
-                    {{ subscribingTextId() === card.textId ? 'Abonnement…' : "S'abonner" }}
-                  </button>
-                } @else {
-                  @if (canAmendText()) {
-                    <a
-                      [routerLink]="['/editor']"
-                      [queryParams]="{ id: card.textId }"
-                      class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
-                    >
-                      Éditer
-                    </a>
-                  }
-                  @if (canVote()) {
-                    <a
-                      [routerLink]="['/vote']"
-                      [queryParams]="{ id: card.textId }"
-                      class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
-                    >
-                      Voter
-                    </a>
-                  }
-                  @if (canCloseText()) {
-                    @if (closedTextIds().has(card.textId)) {
-                      <span class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-emerald-600 shadow-sm">Round clos</span>
-                    } @else {
-                      <button
-                        type="button"
-                        (click)="openCloseRoundPopup(card)"
-                        [disabled]="closingTextId() === card.textId"
-                        class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm disabled:opacity-50"
-                      >
-                        {{ closingTextId() === card.textId ? 'Clôture…' : 'Clore un round' }}
-                      </button>
-                    }
-                  }
-                  @if (canDeleteText()) {
-                    <button
-                      type="button"
-                      (click)="deleteText(card)"
-                      [disabled]="deletingTextId() === card.textId"
-                      class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm disabled:opacity-50"
-                    >
-                      {{ deletingTextId() === card.textId ? 'Suppression…' : 'Supprimer' }}
-                    </button>
-                  }
-                }
-              </div>
-            </div>
-          }
-          </div>
-          @if (loadingMoreRecentTexts()) {
-            <p class="py-3 text-center text-xs text-slate-400">Chargement…</p>
-          }
-        </div>
-      </section>
-    }
-
-    @if (searchResults(); as results) {
-      <div class="absolute inset-x-0 top-16 z-20 rounded-lg border border-slate-200 bg-white/90 p-3 shadow-xl backdrop-blur-sm">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-medium text-slate-500">Résultats de recherche</h2>
-          <button type="button" (click)="clearSearch()" class="text-xs text-slate-400 hover:text-slate-600">
-            Fermer ✕
-          </button>
-        </div>
-
-        @if (results.length === 0) {
-          <p class="mt-3 text-xs text-slate-400">Aucun texte finalisé ne correspond à cette recherche.</p>
-        } @else {
-          <ul class="mt-3 flex flex-col gap-1.5">
-            @for (result of results; track result.textId) {
-              <li class="flex flex-col gap-1 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="flex min-w-0 items-center gap-2">
-                    <a
-                      [routerLink]="['/text']"
-                      [queryParams]="{ id: result.textId }"
-                      class="truncate hover:underline"
-                    >
-                      {{ result.title }}
-                    </a>
-                    @if (result.roundNumber > 0) {
-                      <span class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                        Round {{ result.roundNumber }}
-                      </span>
-                    }
-                  </span>
-                  <span class="flex shrink-0 items-center gap-2">
-                    <span class="text-xs text-slate-400">{{ result.score | number: '1.0-2' }}</span>
-                    @if (!result.subscribed) {
-                      <button
-                        type="button"
-                        (click)="subscribe(result)"
-                        [disabled]="subscribingTextId() === result.textId"
-                        class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
-                      >
-                        {{ subscribingTextId() === result.textId ? 'Abonnement…' : "S'abonner" }}
-                      </button>
-                    }
-                    @if (canAmendText() && result.subscribed) {
-                      <a
-                        [routerLink]="['/editor']"
-                        [queryParams]="{ id: result.textId }"
-                        class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
-                      >
-                        Éditer
-                      </a>
-                    }
-                    @if (canVote() && result.subscribed) {
-                      <a
-                        [routerLink]="['/vote']"
-                        [queryParams]="{ id: result.textId }"
-                        class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
-                      >
-                        Voter
-                      </a>
-                    }
-                    @if (canCloseText() && result.subscribed) {
-                      @if (closedTextIds().has(result.textId)) {
-                        <span class="text-xs text-emerald-600">Round clos</span>
-                      } @else {
-                        <button
-                          type="button"
-                          (click)="openCloseRoundPopup(result)"
-                          [disabled]="closingTextId() === result.textId"
-                          class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
-                        >
-                          {{ closingTextId() === result.textId ? 'Clôture…' : 'Clore un round' }}
-                        </button>
-                      }
-                    }
-                    @if (canDeleteText() && result.subscribed) {
-                      <button
-                        type="button"
-                        (click)="deleteText(result)"
-                        [disabled]="deletingTextId() === result.textId"
-                        class="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
-                      >
-                        {{ deletingTextId() === result.textId ? 'Suppression…' : 'Supprimer' }}
-                      </button>
-                    }
-                  </span>
-                </div>
-                @if (scheduledCloseAt()[result.textId]; as date) {
-                  <p class="text-xs text-amber-700">Clôture programmée le {{ date | date: 'dd/MM/yyyy' }}.</p>
-                }
-                @if (subscribeErrors()[result.textId]; as error) {
-                  <p class="text-xs text-red-600">{{ error }}</p>
-                }
-                @if (closeErrors()[result.textId]; as error) {
-                  <p class="text-xs text-red-600">{{ error }}</p>
-                }
-                @if (deleteErrors()[result.textId]; as error) {
-                  <p class="text-xs text-red-600">{{ error }}</p>
-                }
-              </li>
+    <div class="min-h-0 flex-1 overflow-y-auto" (scroll)="onThreadScroll($event)">
+      @for (item of thread(); track item.textId) {
+        <button
+          type="button"
+          (click)="select(item)"
+          class="block w-full border-b border-slate-200 px-3 py-3 text-left hover:bg-white"
+          [class.bg-white]="item.textId === selectedId()"
+          [class.border-l-2]="item.textId === selectedId()"
+          [class.border-l-slate-900]="item.textId === selectedId()"
+        >
+          <span class="flex items-center gap-2">
+            <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{{
+              item.title
+            }}</span>
+            @if (item.subscribed) {
+              <!-- A dot, not the word: the row is narrow and this is a
+                   secondary detail next to the title. -->
+              <span class="shrink-0 text-emerald-600" title="Abonné" aria-label="Abonné">●</span>
             }
-          </ul>
-        }
-      </div>
-    }
+          </span>
 
-    @if (closeRoundPopup(); as popupResult) {
-      <div class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
-        <div class="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
-          <h3 class="text-sm font-semibold text-slate-900">Clore le round de « {{ popupResult.title }} »</h3>
-          <p class="mt-1 text-xs text-slate-500">
-            Clôturer le vote maintenant, ou programmer sa clôture automatique dans quelques jours ?
-          </p>
-
-          <button
-            type="button"
-            (click)="confirmCloseNow(popupResult)"
-            class="mt-4 w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-          >
-            Clore maintenant
-          </button>
-
-          <div class="mt-3 flex items-center gap-2">
-            <label class="text-xs text-slate-600" for="close-days">Dans</label>
-            <input
-              id="close-days"
-              type="number"
-              min="1"
-              max="365"
-              [(ngModel)]="closeDays"
-              class="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
-            />
-            <span class="text-xs text-slate-600">jour(s)</span>
-            <button
-              type="button"
-              (click)="confirmScheduleClose(popupResult)"
-              [disabled]="!closeDays || closeDays < 1"
-              class="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+          @if (item.roundNumber) {
+            <span
+              class="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
             >
-              Programmer
-            </button>
-          </div>
+              Round {{ item.roundNumber }}
+            </span>
+          }
+          @if (item.score !== undefined) {
+            <span class="mt-1 ml-1 text-[10px] text-slate-400">{{
+              item.score | number: '1.0-2'
+            }}</span>
+          }
 
-          <button
-            type="button"
-            (click)="dismissCloseRoundPopup()"
-            class="mt-4 w-full text-center text-xs text-slate-400 hover:text-slate-600"
-          >
-            Annuler
-          </button>
-        </div>
-      </div>
-    }
-  </div>
+          @if (item.excerpt) {
+            <span class="mt-1 line-clamp-2 block text-xs text-slate-500">{{ item.excerpt }}</span>
+          }
+        </button>
+      } @empty {
+        <p class="p-4 text-center text-xs text-slate-400">
+          @if (searchResults()) {
+            Aucun résultat.
+          } @else {
+            Aucun texte pour le moment.
+          }
+        </p>
+      }
+
+      @if (loadingMoreRecentTexts()) {
+        <p class="py-3 text-center text-xs text-slate-400">Chargement…</p>
+      }
+    </div>
+  </aside>
 </div>
+
+@if (closeRoundPopup(); as popupTarget) {
+  <div class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+    <div class="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+      <h3 class="text-sm font-semibold text-slate-900">
+        Clore le round de « {{ popupTarget.title }} »
+      </h3>
+      <p class="mt-1 text-xs text-slate-500">
+        Clôturer le vote maintenant, ou programmer sa clôture automatique dans quelques jours ?
+      </p>
+
+      <button
+        type="button"
+        (click)="confirmCloseNow(popupTarget)"
+        class="mt-4 w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+      >
+        Clore maintenant
+      </button>
+
+      <div class="mt-3 flex items-center gap-2">
+        <label class="text-xs text-slate-600" for="close-days">Dans</label>
+        <input
+          id="close-days"
+          type="number"
+          min="1"
+          max="365"
+          [(ngModel)]="closeDays"
+          class="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+        />
+        <span class="text-xs text-slate-600">jour(s)</span>
+        <button
+          type="button"
+          (click)="confirmScheduleClose(popupTarget)"
+          [disabled]="!closeDays || closeDays < 1"
+          class="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+        >
+          Programmer
+        </button>
+      </div>
+
+      <button
+        type="button"
+        (click)="dismissCloseRoundPopup()"
+        class="mt-4 w-full text-center text-xs text-slate-400 hover:text-slate-600"
+      >
+        Annuler
+      </button>
+    </div>
+  </div>
+}

@@ -146,12 +146,13 @@ func TestClientTextWithSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Creation opens round 1, empty until somebody proposes against it.
 	empty, err := c.TextWithSlots(ctx, text.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty.RoundNumber != 0 || len(empty.Slots) != 0 {
-		t.Fatalf("TextWithSlots with no round = %+v, want RoundNumber 0 and no slots", empty)
+	if empty.RoundNumber != 1 || len(empty.Slots) != 0 {
+		t.Fatalf("TextWithSlots on a fresh text = %+v, want RoundNumber 1 and no slots", empty)
 	}
 
 	start, end := runeRange(content, "francais")
@@ -185,7 +186,10 @@ func TestClientErrorsSurfaceAsAPIError(t *testing.T) {
 	}
 }
 
-func TestClientCloseRoundWithNoOpenRoundIsAConflict(t *testing.T) {
+// Closing a text nobody has proposed against is still a 409 — it is now
+// ErrEmptyRound rather than ErrNoOpenRound that says so, since creation
+// leaves a round open.
+func TestClientCloseRoundWithNothingProposedIsAConflict(t *testing.T) {
 	ctx := context.Background()
 	c := newTestClient(t)
 

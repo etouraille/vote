@@ -1,32 +1,69 @@
-@if (auth.isAuthenticated() && auth.user(); as user) {
-  <div class="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
-    <div class="flex items-center gap-2">
-      @if (avatarUrl(); as url) {
-        <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-slate-200" />
-      }
-      <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
-    </div>
-    <div class="flex items-center gap-2">
-      @if (user.canCreateText) {
+<!-- Column: the signed-in bar on top, the routed page filling the rest. -->
+<div class="flex h-screen flex-col">
+  @if (auth.isAuthenticated() && auth.user(); as user) {
+    <div
+      class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2"
+    >
+      <div class="flex items-center gap-2">
+        @if (avatarUrl(); as url) {
+          <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-slate-200" />
+        }
+        <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        @if (user.canCreateText) {
+          <a
+            routerLink="/editor"
+            class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Créer
+          </a>
+        }
+        <!-- Flat in the bar rather than behind a menu: the count is the
+           point, and a badge nobody can see until they open a menu is a
+           badge that does nothing. -->
         <a
-          routerLink="/editor"
-          class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+          routerLink="/notifications"
+          class="relative rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          [attr.aria-label]="
+            notifications.unread() === 0
+              ? 'Notifications'
+              : notifications.unread() + ' notification(s) non lue(s)'
+          "
         >
-          Créer
+          Notifications
+          @if (notifications.unread() > 0) {
+            <!-- Past 99 the exact figure stops being information and starts
+               being a wide badge. -->
+            <span
+              class="absolute -top-1.5 -right-1.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 font-medium text-white"
+            >
+              {{ notifications.unread() > 99 ? '99+' : notifications.unread() }}
+            </span>
+          }
         </a>
-      }
-      @if (user.root) {
-        <a
-          routerLink="/backoffice"
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+        @if (user.root) {
+          <a
+            routerLink="/backoffice"
+            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Backoffice
+          </a>
+        }
+        <button
+          (click)="logout()"
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
         >
-          Backoffice
-        </a>
-      }
-      <button (click)="logout()" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700">
-        Se déconnecter
-      </button>
+          Se déconnecter
+        </button>
+      </div>
     </div>
-  </div>
-}
-<router-outlet />
+  }
+  <!-- The routed page gets whatever height the top bar leaves, rather than
+     each page guessing at that height itself: home needs to fill it exactly
+     (its thread column scrolls on its own), and every other page scrolls
+     inside it as it did inside the window. -->
+  <main class="min-h-0 flex-1 overflow-y-auto">
+    <router-outlet />
+  </main>
+</div>

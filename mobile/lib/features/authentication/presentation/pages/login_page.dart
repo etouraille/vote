@@ -111,6 +111,11 @@ class _LoginPageState extends State<LoginPage> {
     unawaited(NotificationService.registerDevice());
     if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(AppRouter.search);
+
+    // After the replacement, so the text a notification pointed at is
+    // pushed on top of the search page and the back button leads somewhere.
+    // A no-op unless a tap launched the app while it was signed out.
+    NotificationService.openPendingLaunch();
   }
 
   /// Returns the entered pseudo, or null if the user dismissed the dialog.

@@ -41,6 +41,16 @@ type Permissions struct {
 	// separate from the others because it's a strictly more powerful,
 	// vote-bypassing action than any of them.
 	CanUpdateText bool `json:"canUpdateText"`
+
+	// CanSubscribe allows following a text (Repository.Subscribe).
+	//
+	// Unlike the others this gates no change to any text: a subscription
+	// is a personal focus signal. It matters because following a text is
+	// what surfaces its vote/edit/close actions in the front ends, and
+	// what puts someone on the notification fan-out's recipient list — so
+	// withholding it is how an install keeps a user read-only without
+	// having to revoke each acting permission one by one.
+	CanSubscribe bool `json:"canSubscribe"`
 }
 
 // PermBit is one bit in a Unix-style permission mask — a compact encoding
@@ -56,6 +66,7 @@ const (
 	PermSelect
 	PermEditSelection
 	PermUpdateText
+	PermSubscribe
 )
 
 // Bits packs p into a single byte, one bit per permission — see PermBit.
@@ -79,6 +90,9 @@ func (p Permissions) Bits() PermBit {
 	if p.CanUpdateText {
 		b |= PermUpdateText
 	}
+	if p.CanSubscribe {
+		b |= PermSubscribe
+	}
 	return b
 }
 
@@ -91,6 +105,7 @@ func PermissionsFromBits(b PermBit) Permissions {
 		CanSelect:        b&PermSelect != 0,
 		CanEditSelection: b&PermEditSelection != 0,
 		CanUpdateText:    b&PermUpdateText != 0,
+		CanSubscribe:     b&PermSubscribe != 0,
 	}
 }
 
@@ -107,6 +122,7 @@ const (
 	ActionSelect        Action = "select"
 	ActionEditSelection Action = "editSelection"
 	ActionUpdateText    Action = "updateText"
+	ActionSubscribe     Action = "subscribe"
 )
 
 // User is one entry in the flat-file directory, identified by a UUID
@@ -137,6 +153,8 @@ func (u *User) Can(action Action) bool {
 		return u.Permissions.CanEditSelection
 	case ActionUpdateText:
 		return u.Permissions.CanUpdateText
+	case ActionSubscribe:
+		return u.Permissions.CanSubscribe
 	default:
 		return false
 	}
@@ -160,6 +178,8 @@ func (b PermBit) Allows(action Action) bool {
 		return b&PermEditSelection != 0
 	case ActionUpdateText:
 		return b&PermUpdateText != 0
+	case ActionSubscribe:
+		return b&PermSubscribe != 0
 	default:
 		return false
 	}

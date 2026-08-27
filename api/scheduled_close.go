@@ -47,7 +47,7 @@ func isScheduledCloseLeader(membership *cluster.Membership, self cluster.Node) b
 // Re-checked every tick rather than once at startup, so leadership follows
 // the node set as it changes instead of freezing whoever happened to be
 // first when this process started.
-func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index *searchIndexer, interval time.Duration, isLeader func() bool) {
+func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index *searchIndexer, notifier *textNotifier, interval time.Duration, isLeader func() bool) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -73,6 +73,10 @@ func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index 
 				if err := index.IndexFinalizedText(ctx, outcome.Text); err != nil {
 					log.Printf("scheduled close worker: indexing text %s (forked from %s): %v", outcome.Text.ID, round.TextID, err)
 				}
+
+				// No actor to exclude: nobody asked for this close now, the
+				// due date did — so every follower hears about it.
+				notifier.RoundClosed(outcome.Text, "")
 				log.Printf("scheduled close worker: closed round %d for text %s (forked into %s)", round.Number, round.TextID, outcome.Text.ID)
 			}
 		}

@@ -28,6 +28,15 @@ class ApiClient {
     return _decode(response);
   }
 
+  static Future<dynamic> put(String path, Map<String, dynamic> body) async {
+    final response = await http.put(
+      Uri.parse('${Env.apiBaseUrl}$path'),
+      headers: await _headers(),
+      body: jsonEncode(body),
+    );
+    return _decode(response);
+  }
+
   /// Tells the api which front end is calling. Only POST /api/auth/google
   /// acts on it today — web and mobile sign in through separate Google
   /// OAuth clients, so the api needs to know whose `aud` claim to expect

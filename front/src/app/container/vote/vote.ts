@@ -1,6 +1,7 @@
+import { Location } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, WritableSignal, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { Fragment, Slot } from '../../model/text.model';
 import { AuthService } from '../../service/auth';
@@ -47,11 +48,13 @@ type Segment = { kind: 'plain'; text: string } | { kind: 'slot'; group: SlotGrou
 
 @Component({
   selector: 'vote-page',
-  imports: [RouterLink],
+  imports: [],
   templateUrl: './vote.html',
 })
 export class VotePage implements OnInit {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly location = inject(Location);
   private readonly textService = inject(TextService);
   private readonly auth = inject(AuthService);
 
@@ -65,6 +68,33 @@ export class VotePage implements OnInit {
   // Hover-to-vote controls only ever show if the caller actually has the
   // right to vote — otherwise hovering a zone reveals nothing.
   readonly canVote = signal(false);
+
+  // Whether this user's vote in that slot went to that fragment — what
+  // paints the wording they chose (see vote.html).
+  //
+  // Takes a nullable id so the "valeurs initiales" line can ask about
+  // group.seedFragmentId directly: a slot queel somehow didn't seed has a
+  // null one, and null must never match a null vote.
+  hasVotedFor(group: SlotGroup, fragmentId: string | null): boolean {
+    return fragmentId !== null && group.votedFragmentId() === fragmentId;
+  }
+
+  // Back to wherever this page was opened from — the home thread, the
+  // notification inbox — rather than always to /home, which silently
+  // discards the screen the reader was on. There are two ways in already
+  // (see home.html and notifications.ts), and a fixed destination is wrong
+  // for one of them whichever one it names.
+  //
+  // Falls back to /home when there is no in-app history to step into: the
+  // page was opened straight from its URL, where location.back() would
+  // leave the app entirely.
+  goBack(): void {
+    if (this.router.lastSuccessfulNavigation()?.previousNavigation) {
+      this.location.back();
+      return;
+    }
+    this.router.navigateByUrl('/home');
+  }
 
   ngOnInit(): void {
     this.auth.me().subscribe((me) => {
@@ -97,8 +127,16 @@ export class VotePage implements OnInit {
   private loadFragments(textId: string, content: string, slots: Slot[]): void {
     const runes = Array.from(content);
 
-    forkJoin(slots.map((slot) => this.textService.fragmentsForSlot(textId, slot.id))).subscribe({
-      next: (fragmentsPerSlot) => {
+    // The caller's existing votes ride along with the fragments: both are
+    // needed before the first render, and asking for them afterwards would
+    // paint the page once without the highlight and again with it.
+    forkJoin({
+      fragmentsPerSlot: forkJoin(
+        slots.map((slot) => this.textService.fragmentsForSlot(textId, slot.id)),
+      ),
+      myVotes: this.textService.myVotes(textId),
+    }).subscribe({
+      next: ({ fragmentsPerSlot, myVotes }) => {
         this.loading.set(false);
         const groups: SlotGroup[] = slots.map((slot, i) => {
           const original = runes.slice(slot.start, slot.end).join('');
@@ -115,7 +153,10 @@ export class VotePage implements OnInit {
               hovering: signal(false),
             })),
             voting: signal(false),
-            votedFragmentId: signal<string | null>(null),
+            // Seeded from the server, so a vote cast in an earlier visit
+            // is highlighted on load rather than only until the next
+            // reload.
+            votedFragmentId: signal<string | null>(myVotes[slot.id] ?? null),
             error: signal<string | null>(null),
           };
         });

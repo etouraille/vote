@@ -176,7 +176,10 @@ func TestRecentTextsExcludesSupersededVersions(t *testing.T) {
 	}
 }
 
-func TestCreateTextHasNoSlotsOrOpenRound(t *testing.T) {
+// TestCreateTextOpensAnEmptyFirstRound is the other half of the invariant
+// that a text is open for proposals from the moment it exists: round 1 is
+// there straight away, and it is empty until someone selects a range.
+func TestCreateTextOpensAnEmptyFirstRound(t *testing.T) {
 	repo := newTestRepository(t)
 
 	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "creator")
@@ -186,8 +189,16 @@ func TestCreateTextHasNoSlotsOrOpenRound(t *testing.T) {
 	if text.Content != "Nous, le peuple." {
 		t.Fatalf("Content = %q", text.Content)
 	}
-	if _, err := repo.CurrentRound(text.ID); err != ErrNotFound {
-		t.Fatalf("expected no open round on a fresh text, got %v", err)
+
+	round, err := repo.CurrentRound(text.ID)
+	if err != nil {
+		t.Fatalf("expected an open round on a fresh text, got %v", err)
+	}
+	if round.Number != 1 {
+		t.Fatalf("Number = %d, want the first round to be 1", round.Number)
+	}
+	if len(round.Slots) != 0 {
+		t.Fatalf("Slots = %v, want none until somebody proposes", round.Slots)
 	}
 }
 
@@ -746,14 +757,41 @@ func TestCloseRoundWithNoSubscribersIsUnaffected(t *testing.T) {
 	}
 }
 
-func TestCloseRoundNoOpenRound(t *testing.T) {
+// TestCloseRoundEmptyRound keeps what TestCloseRoundNoOpenRound used to
+// protect — a text nobody has proposed anything on cannot be closed — now
+// that the reason has changed: the round exists from creation, it is simply
+// empty, and closing it would fork a copy saying nothing new.
+func TestCloseRoundEmptyRound(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := repo.CloseRound(text.ID); err != ErrEmptyRound {
+		t.Fatalf("expected ErrEmptyRound, got %v", err)
+	}
+}
+
+// TestCloseRoundNoOpenRound covers the case that still has no round at all:
+// a text a fork has already superseded, whose currentRound was tombstoned
+// by the close that produced the fork.
+func TestCloseRoundNoOpenRound(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end := runeRange(content, "peuple")
+	if _, err := repo.ProposeEdit(text.ID, start, end, "citoyen", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CloseRound(text.ID); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := repo.CloseRound(text.ID); err != ErrNoOpenRound {
-		t.Fatalf("expected ErrNoOpenRound, got %v", err)
+		t.Fatalf("expected ErrNoOpenRound on a superseded text, got %v", err)
 	}
 }
 
@@ -927,14 +965,17 @@ func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
 	}
 }
 
-func TestScheduleRoundCloseNoOpenRound(t *testing.T) {
+// Scheduling is refused on an empty round for the same reason closing is,
+// plus one of its own: the worker would otherwise inherit a round it can
+// never close and retry it on every tick.
+func TestScheduleRoundCloseEmptyRound(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(24*time.Hour)); err != ErrNoOpenRound {
-		t.Fatalf("expected ErrNoOpenRound, got %v", err)
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(24*time.Hour)); err != ErrEmptyRound {
+		t.Fatalf("expected ErrEmptyRound, got %v", err)
 	}
 }
 
@@ -1009,7 +1050,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	}
 }
 
-func TestTextWithSlotsNoOpenRound(t *testing.T) {
+func TestTextWithSlotsEmptyFirstRound(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
 	if err != nil {
@@ -1023,8 +1064,8 @@ func TestTextWithSlotsNoOpenRound(t *testing.T) {
 	if got.Text.ID != text.ID {
 		t.Fatalf("Text.ID = %q, want %q", got.Text.ID, text.ID)
 	}
-	if got.RoundNumber != 0 {
-		t.Fatalf("RoundNumber = %d, want 0 with no round ever opened", got.RoundNumber)
+	if got.RoundNumber != 1 {
+		t.Fatalf("RoundNumber = %d, want 1 — creation opens the first round", got.RoundNumber)
 	}
 	if got.Slots == nil || len(got.Slots) != 0 {
 		t.Fatalf("Slots = %v, want a non-nil empty slice", got.Slots)
@@ -1124,7 +1165,11 @@ func TestSecondRoundBuildsOnClosedRoundContent(t *testing.T) {
 	}
 }
 
-func TestRoundCountNeverOpenedIsZero(t *testing.T) {
+// A fresh text is at 1, not 0: creation opens its first round. Zero is now
+// reachable only for an id no text was ever created under — which is what
+// the second half checks, since that is the only reading of "no round ever
+// opened" left.
+func TestRoundCountOnAFreshTextIsOne(t *testing.T) {
 	repo := newTestRepository(t)
 	text, err := repo.CreateText("Constitution", "Nous le peuple francais declare.", "creator")
 	if err != nil {
@@ -1134,8 +1179,16 @@ func TestRoundCountNeverOpenedIsZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if count != 1 {
+		t.Fatalf("RoundCount on a fresh text = %d, want 1 — creation opens round 1", count)
+	}
+
+	count, err = repo.RoundCount("no-such-text")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if count != 0 {
-		t.Fatalf("RoundCount for a text with no round ever opened = %d, want 0", count)
+		t.Fatalf("RoundCount for an unknown text = %d, want 0", count)
 	}
 }
 
@@ -1174,18 +1227,32 @@ func TestRoundCountSurvivesAfterTheRoundCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The original text's own round is gone (it forked), but RoundCount on
-	// the *forked* text must still say 1 — that's the whole point: a closed
-	// round shouldn't look indistinguishable from "never had a round".
-	if _, err := repo.CurrentRound(outcome.Text.ID); err != ErrNotFound {
-		t.Fatalf("expected no open round on the freshly forked text, got err=%v", err)
+	// The original text's own round is gone (it forked) and the fork opens
+	// the next one straight away, so the count continues across the chain
+	// rather than restarting — a closed round must never look
+	// indistinguishable from "never had a round".
+	next, err := repo.CurrentRound(outcome.Text.ID)
+	if err != nil {
+		t.Fatalf("expected the fork to have its own open round, got err=%v", err)
 	}
+	if next.Number != 2 {
+		t.Fatalf("the fork's round Number = %d, want 2 — round 1 is what produced it", next.Number)
+	}
+	if len(next.Slots) != 0 {
+		t.Fatalf("the fork's round Slots = %v, want none until somebody proposes again", next.Slots)
+	}
+
+	// And the old text keeps no open round of its own: it is frozen history.
+	if _, err := repo.CurrentRound(text.ID); err != ErrNotFound {
+		t.Fatalf("expected no open round left on the superseded text, got err=%v", err)
+	}
+
 	count, err = repo.RoundCount(outcome.Text.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Fatalf("RoundCount on the forked text after closing = %d, want 1 (the round that produced it)", count)
+	if count != 2 {
+		t.Fatalf("RoundCount on the forked text after closing = %d, want 2 (the closed round plus the one just opened)", count)
 	}
 }
 

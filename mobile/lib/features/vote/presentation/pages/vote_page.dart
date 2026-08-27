@@ -114,6 +114,14 @@ class _VotePageState extends State<VotePage> {
         text.slots.map((slot) => VoteApi.fragmentsForSlot(widget.textId, slot.id)),
       );
 
+      // Best-effort, unlike the fragments: a vote that couldn't be read
+      // back only costs the highlight on an earlier choice, where failing
+      // the whole page would cost the vote itself.
+      var myVotes = <String, String>{};
+      try {
+        myVotes = await VoteApi.myVotes(widget.textId);
+      } catch (_) {}
+
       // Rune offsets, not code units: slot bounds are counted in runes, and
       // slicing a string with accents any other way cuts through characters.
       final runes = text.content.runes.toList();
@@ -127,7 +135,7 @@ class _VotePageState extends State<VotePage> {
             original: String.fromCharCodes(runes.sublist(slot.start, slot.end)),
             seedFragmentId: fragments.where((f) => f.isSeed).firstOrNull?.id,
             proposals: fragments.where((f) => !f.isSeed).toList(),
-          ),
+          )..votedFragmentId = myVotes[slot.id],
         );
       }
 
@@ -237,16 +245,36 @@ class _VotePageState extends State<VotePage> {
             _PlainSegment(:final text) => TextSpan(text: text),
             _SlotSegment(:final group) => TextSpan(
                 text: group.original,
-                style: TextStyle(
-                  backgroundColor: Colors.red.shade100,
-                  color: Colors.red.shade900,
-                  decoration: TextDecoration.lineThrough,
-                ),
+                style: _votedFor(group, group.seedFragmentId)
+                    // Voting for the original keeps it: the strike-through
+                    // would say the opposite of the highlight.
+                    ? _chosenStyle
+                    : TextStyle(
+                        backgroundColor: Colors.red.shade100,
+                        color: Colors.red.shade900,
+                        decoration: TextDecoration.lineThrough,
+                      ),
               ),
           },
       ],
     );
   }
+
+  /// How a wording this user voted for is painted — the same yellow the
+  /// web front uses (#fef08a), so "chosen" reads the same on both.
+  static final _chosenStyle = TextStyle(
+    backgroundColor: Colors.yellow.shade200,
+    color: Colors.yellow.shade900,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Whether this user's vote in that slot went to that fragment.
+  ///
+  /// Takes a nullable id so the originals line can ask about
+  /// seedFragmentId directly: a slot queel somehow didn't seed has a null
+  /// one, and null must never match a null vote.
+  bool _votedFor(_SlotGroup group, String? fragmentId) =>
+      fragmentId != null && group.votedFragmentId == fragmentId;
 
   /// The same reconstruction, mirrored: each slot shows every competing
   /// proposal side by side in its place, separated by " / ".
@@ -264,10 +292,12 @@ class _VotePageState extends State<VotePage> {
             children.add(
               TextSpan(
                 text: fragment.content,
-                style: TextStyle(
-                  backgroundColor: Colors.green.shade100,
-                  color: Colors.green.shade900,
-                ),
+                style: _votedFor(group, fragment.id)
+                    ? _chosenStyle
+                    : TextStyle(
+                        backgroundColor: Colors.green.shade100,
+                        color: Colors.green.shade900,
+                      ),
                 recognizer: _canVote ? _recognizerFor(group, fragment) : null,
               ),
             );

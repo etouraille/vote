@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -5,8 +8,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../app/config/env.dart';
 import '../../app/router.dart';
+import '../search/presentation/pages/text_detail_page.dart';
 import '../vote/presentation/pages/vote_page.dart';
 import 'data/datasources/device_api.dart';
+import 'notification_types.dart';
+import 'unread_notifications.dart';
 
 /// Android notification channel. Android groups notifications by channel
 /// and lets the user mute them per channel, so one is declared explicitly
@@ -28,6 +34,18 @@ class NotificationService {
   NotificationService._();
 
   static final _localNotifications = FlutterLocalNotificationsPlugin();
+
+  /// What a tap asked to open before there was a Navigator to open it on.
+  ///
+  /// The cold-start case makes this unavoidable: the message that launched
+  /// the app is read by getInitialMessage inside [initialize], which main()
+  /// awaits *before* runApp — so at that moment no widget tree exists, and
+  /// acting on the tap immediately is impossible rather than merely early.
+  /// It is held here instead and replayed by [openPendingLaunch].
+  ///
+  /// Only the latest is kept: two notifications tapped before the app is up
+  /// is not a real sequence, and the last one is the one the user meant.
+  static ({String? type, String? textId})? _pendingLaunch;
 
   /// Called once at startup, before runApp. Does nothing at all when the
   /// Firebase settings are absent from .env — an app built without
@@ -82,7 +100,7 @@ class NotificationService {
       // Foreground notifications are drawn by this plugin, not the system,
       // so their taps come back here rather than through
       // FirebaseMessaging.onMessageOpenedApp.
-      onDidReceiveNotificationResponse: (response) => _openText(response.payload),
+      onDidReceiveNotificationResponse: (response) => _openFromPayload(response.payload),
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
@@ -90,6 +108,11 @@ class NotificationService {
   }
 
   static Future<void> _showForegroundNotification(RemoteMessage message) async {
+    // Bumped before the early return below: the api wrote an inbox row for
+    // this event whether or not it carried anything displayable, so the
+    // badge would otherwise undercount silent messages.
+    UnreadNotifications.increment();
+
     final notification = message.notification;
     if (notification == null) return;
 
@@ -97,9 +120,14 @@ class NotificationService {
       id: notification.hashCode,
       title: notification.title,
       body: notification.body,
-      // Carries the text id through the plugin so a tap knows where to go —
-      // the FCM data map isn't handed back with the tap, only this is.
-      payload: message.data['textId'] as String?,
+      // Carries what a tap needs through the plugin, encoded because the
+      // payload is a single string: the FCM data map isn't handed back with
+      // the tap, only this is. The type travels alongside the id because
+      // the two together are what decide the destination.
+      payload: jsonEncode({
+        'type': message.data['type'],
+        'textId': message.data['textId'],
+      }),
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _androidChannel.id,
@@ -111,25 +139,69 @@ class NotificationService {
     );
   }
 
-  /// Opens the vote page for whichever text a tapped notification carried.
+  /// Opens whatever a tapped notification pointed at.
   ///
-  /// The id travels in the message's data map (see the api's EditProposed),
-  /// not in its title or body: the visible text is for the reader, the data
-  /// is what the app acts on.
+  /// Both the id and the kind travel in the message's data map (see the
+  /// api's EditProposed), not in its title or body: the visible text is for
+  /// the reader, the data is what the app acts on.
   static void _openFromData(Map<String, dynamic> data) {
-    _openText(data['textId'] as String?);
+    _open(data['type'] as String?, data['textId'] as String?);
   }
 
-  static void _openText(String? textId) {
+  /// The same, for a notification drawn by the local plugin rather than by
+  /// Android — its tap hands back only the payload string set above.
+  static void _openFromPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      _open(data['type'] as String?, data['textId'] as String?);
+    } catch (_) {
+      // A payload written before this carried anything but the bare id.
+      // Treating it as one keeps a notification still sitting in the
+      // drawer across an app update from becoming a dead tap.
+      _open(null, payload);
+    }
+  }
+
+  /// Routes by kind, the same way the in-app inbox does (see
+  /// NotificationsPage) — a notification has to lead to the same place
+  /// whichever of the two it is tapped from.
+  static void _open(String? type, String? textId) {
     if (textId == null || textId.isEmpty) return;
 
     // Navigating from outside the widget tree — a tap handler has no
     // BuildContext of its own. Null while the app is still starting up,
-    // in which case there is nothing to push onto yet.
+    // where the destination is remembered rather than dropped: this is the
+    // normal path for a notification that launched the app.
     final navigator = AppRouter.navigatorKey.currentState;
-    if (navigator == null) return;
+    if (navigator == null) {
+      _pendingLaunch = (type: type, textId: textId);
+      return;
+    }
 
-    navigator.push(MaterialPageRoute(builder: (_) => VotePage(textId: textId)));
+    navigator.push(MaterialPageRoute(
+      builder: (_) => NotificationTypes.opensVote(type)
+          ? VotePage(textId: textId)
+          : TextDetailPage(textId: textId),
+    ));
+  }
+
+  /// Opens whatever a tap asked for while the app had no Navigator yet.
+  ///
+  /// Called once the first frame is built, and again after a sign-in: the
+  /// pages a notification leads to all need a session, so a tap that
+  /// launched a signed-out app is honoured at the end of the login it
+  /// prompted rather than thrown away.
+  ///
+  /// Consumes what it replays, so a later call is a no-op instead of
+  /// reopening the same text.
+  static void openPendingLaunch() {
+    final pending = _pendingLaunch;
+    if (pending == null) return;
+
+    _pendingLaunch = null;
+    _open(pending.type, pending.textId);
   }
 
   /// Forgets this device server-side, so its owner stops receiving
@@ -160,6 +232,10 @@ class NotificationService {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null) await DeviceApi.register(token);
+
+      // Signing in on a device that was away: whatever arrived meanwhile
+      // is already in the inbox, and the badge has to say so.
+      unawaited(UnreadNotifications.refresh());
 
       // FCM replaces a token on reinstall, restore, or when it expires;
       // without this the server would keep pushing to a dead one.

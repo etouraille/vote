@@ -28,6 +28,19 @@ class Endpoints {
   /// Registers this device's push token against the signed-in user.
   static const devices = '/api/me/devices';
 
+  /// The caller's notification inbox, newest first, with the unread count
+  /// alongside it. The same events push delivers (see NotificationService),
+  /// kept server-side so the history survives a reinstall and reads the
+  /// same on every device.
+  static const notifications = '/api/me/notifications';
+
+  /// Flips one notification between read and unread — the body carries
+  /// which, so the same route serves both directions.
+  static String notificationRead(int id) => '/api/me/notifications/$id/read';
+
+  /// Empties the badge in one call.
+  static const notificationsReadAll = '/api/me/notifications/read-all';
+
   /// A text plus the slots of its current round, if any. No open round is a
   /// 200 with roundNumber 0 and no slots, not a 404.
   static String textWithSlots(String id) => '/api/texts/$id/with-slots';
@@ -35,6 +48,11 @@ class Endpoints {
   /// The competing proposals for one slot, including the seed fragment that
   /// stands for "keep the original wording".
   static String slotFragments(String textId, String slotId) => '/api/texts/$textId/slots/$slotId/fragments';
+
+  /// Which fragment the caller currently has voted for in each slot of a
+  /// text, keyed by slot id. Slots they haven't voted in are absent. The
+  /// caller comes from the bearer token, so nothing names them in the path.
+  static String myVotes(String textId) => '/api/texts/$textId/my-votes';
 
   static String castVote(String fragmentId) => '/api/fragments/$fragmentId/vote';
 }

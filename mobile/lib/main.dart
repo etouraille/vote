@@ -44,4 +44,15 @@ Future<void> main() async {
 
   runApp(QueelApp(initialPage: token != null ? const SearchPage() : const LoginPage()));
   FlutterNativeSplash.remove();
+
+  // A notification tapped while the app wasn't running was read above, in
+  // initialize(), when there was no Navigator to act on it yet. The first
+  // frame has built one, so it can be honoured now.
+  //
+  // Only with a session: every page it leads to needs a bearer token.
+  // Without one the tap stays pending and the login page replays it once
+  // signed in (see NotificationService.openPendingLaunch).
+  if (token != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => NotificationService.openPendingLaunch());
+  }
 }

@@ -40,6 +40,13 @@ export const routes: Routes = [
     title: 'Voter',
   },
   {
+    path: 'notifications',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./container/notifications/notifications').then((m) => m.NotificationsPage),
+    title: 'Notifications',
+  },
+  {
     path: 'text',
     canActivate: [authGuard],
     loadComponent: () => import('./container/text/text').then((m) => m.TextPage),

@@ -1,0 +1,1 @@
+quand tu fait une route sur l'api fait la même chose dans api/queel, dans le module queel pour qu'un appel vers le socket unix fasse la même fonction que dans l'api. Si ce n'est pas fait pour toutes les routes, complète le module queel.

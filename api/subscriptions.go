@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/etouraille/queel"
+	"github.com/etouraille/queel/rbac"
 )
 
 type subscribeResponse struct {
@@ -12,14 +13,23 @@ type subscribeResponse struct {
 }
 
 // subscribeHandler lets the caller follow a text — see queel.Subscription's
-// doc comment: it's a personal "focus" signal, not a permission grant, so
-// unlike vote/edit/close/delete this isn't gated by any rbac.Action —
-// anyone with a valid session can subscribe to any text they can see.
+// doc comment: a personal "focus" signal rather than a right over the text
+// itself. It is gated all the same (rbac.ActionSubscribe), because
+// following is what surfaces a text's vote/edit/close actions in both front
+// ends and what puts someone on the notification fan-out — so this is the
+// single bit that decides whether an account takes part at all or stays a
+// reader.
+//
+// Listing one's own subscriptions stays ungated below: withholding the
+// right to follow new texts shouldn't hide the ones already followed.
 func subscribeHandler(repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsFromContext(r)
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
+		if !requirePermission(w, r, rbac.ActionSubscribe) {
 			return
 		}
 

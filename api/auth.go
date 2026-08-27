@@ -47,7 +47,22 @@ type registerAck struct {
 	Message string `json:"message"`
 }
 
-func registerHandler(store *Store) http.HandlerFunc {
+// defaultPermissions is what every account starts with, however it was
+// created. Voting is the one action the app is for, and withholding it
+// would leave a fresh account able to read and follow texts but never take
+// part — an admin would have to grant it by hand before anyone could do
+// the thing they signed up to do.
+//
+// Everything more consequential — proposing edits, creating texts, closing
+// rounds, overwriting a text outright — stays off by default and is granted
+// per user from the backoffice.
+//
+// Following a text comes with it: voting is only offered on texts you
+// follow, so granting the vote without the follow would be a permission
+// that can never be exercised.
+var defaultPermissions = rbac.Permissions{CanVote: true, CanSubscribe: true}
+
+func registerHandler(store *Store, rbacStore *rbac.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req credentialsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -89,8 +104,34 @@ func registerHandler(store *Store) http.HandlerFunc {
 			return
 		}
 
+		// Same grant the Google path makes (see createUserFromGoogleSignIn):
+		// without it an account registered by email would carry no rbac
+		// entry at all, and issueToken would hand it a token with an empty
+		// permission mask — unable to vote, where the very same person
+		// signing in with Google could.
+		//
+		// Before the email rather than after, so the rollback below is the
+		// one place that undoes a half-created account: a failure here
+		// leaves nothing behind but the Postgres row, which it deletes.
+		rbacUser, err := rbacStore.CreateUser(false, defaultPermissions)
+		if err == nil {
+			err = store.SetRbacUUID(r.Context(), user.ID, rbacUser.ID)
+			if err != nil {
+				// The rbac entry is orphaned otherwise: nothing points at
+				// it, and the retry below will create another.
+				_ = rbacStore.DeleteUser(rbacUser.ID)
+			}
+		}
+		if err != nil {
+			log.Printf("failed to assign default permissions to %s: %v", user.Email, err)
+			_ = store.DeleteUser(r.Context(), user.ID)
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
 		if err := sendValidationEmail(user.Email, code); err != nil {
 			log.Printf("failed to send validation email to %s: %v", user.Email, err)
+			_ = rbacStore.DeleteUser(rbacUser.ID)
 			_ = store.DeleteUser(r.Context(), user.ID)
 			writeError(w, http.StatusInternalServerError, "impossible d'envoyer l'email de confirmation, réessayez")
 			return
@@ -395,7 +436,7 @@ func createUserFromGoogleSignIn(w http.ResponseWriter, r *http.Request, store *S
 		return nil, false
 	}
 
-	rbacUser, err := rbacStore.CreateUser(false, rbac.Permissions{CanVote: true})
+	rbacUser, err := rbacStore.CreateUser(false, defaultPermissions)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "erreur serveur")
 		return nil, false

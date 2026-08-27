@@ -1,6 +1,10 @@
 <div class="mx-auto max-w-3xl px-4 py-8">
   <header class="flex items-center pb-3">
-    <a routerLink="/home" class="text-sm text-slate-500 hover:underline">&larr; Retour</a>
+    <!-- A button, not a link: it goes back through history rather than to
+         a fixed address, so there is no URL for it to carry. -->
+    <button type="button" (click)="goBack()" class="text-sm text-slate-500 hover:underline">
+      &larr; Retour
+    </button>
   </header>
 
   <h1 class="text-xl font-semibold text-slate-900">
@@ -12,7 +16,14 @@
   } @else if (loadError(); as error) {
     <p class="mt-6 text-sm text-red-600">{{ error }}</p>
   } @else if (slotGroups().length === 0) {
-    <p class="mt-6 text-sm text-slate-500">Aucun round n'est actuellement ouvert pour ce texte.</p>
+    <!-- Every text now carries an open round from its creation onwards, so
+         an empty list means "nobody has proposed anything yet", not "no
+         round" — the old wording said the latter and would now be wrong on
+         every untouched text. -->
+    <p class="mt-6 text-sm text-slate-500">
+      Aucune modification n'a encore été proposée sur ce texte. Le tour de vote est ouvert :
+      proposez-en une depuis l'éditeur.
+    </p>
   } @else {
     <section class="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <!-- The whole text, reconstructed once — every slot shown in place
@@ -22,10 +33,24 @@
       <h2 class="text-sm font-medium text-slate-500">Valeurs initiales</h2>
       <p class="mt-2 whitespace-pre-wrap leading-relaxed text-slate-900">
         @for (seg of segments(); track $index) {
-          @if (seg.kind === 'plain') {{{ seg.text }}} @else {<span
-              class="rounded bg-red-100 px-1 text-red-800 line-through"
+          @if (seg.kind === 'plain') {
+            {{ seg.text }}
+          } @else {
+            <!-- Struck through in red as the wording being replaced —
+                 unless it is the one this user voted for, where it turns
+                 yellow like any chosen wording and loses the strike, which
+                 would otherwise contradict the highlight. -->
+            <span
+              class="rounded px-1"
+              [class.bg-red-100]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.text-red-800]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.line-through]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.bg-yellow-200]="hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.text-yellow-900]="hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.font-medium]="hasVotedFor(seg.group, seg.group.seedFragmentId)"
               >{{ seg.group.original }}</span
-            >}
+            >
+          }
         }
       </p>
 
@@ -36,15 +61,30 @@
       <h2 class="mt-6 text-sm font-medium text-slate-500">Valeurs modifiées</h2>
       <p class="mt-2 whitespace-pre-wrap leading-relaxed text-slate-900">
         @for (seg of segments(); track $index) {
-          @if (seg.kind === 'plain') {{{ seg.text }}} @else if (seg.group.fragments.length === 0) {{{ seg.group.original }}} @else {
-            @for (fv of seg.group.fragments; track fv.fragment.id; let last = $last) {<span
-                class="relative inline-block"
-                ><span
-                  class="cursor-pointer rounded bg-green-100 px-1 text-green-800"
+          @if (seg.kind === 'plain') {
+            {{ seg.text }}
+          } @else if (seg.group.fragments.length === 0) {
+            {{ seg.group.original }}
+          } @else {
+            @for (fv of seg.group.fragments; track fv.fragment.id; let last = $last) {
+              <span class="relative inline-block"
+                ><!-- Green while it is one candidate among others; yellow
+                      once this user has picked it — the same #fef08a the
+                      editor paints a selected range with, so "chosen" reads
+                      the same across the app. -->
+                <span
+                  class="cursor-pointer rounded px-1"
+                  [class.bg-green-100]="!hasVotedFor(seg.group, fv.fragment.id)"
+                  [class.text-green-800]="!hasVotedFor(seg.group, fv.fragment.id)"
+                  [class.bg-yellow-200]="hasVotedFor(seg.group, fv.fragment.id)"
+                  [class.text-yellow-900]="hasVotedFor(seg.group, fv.fragment.id)"
+                  [class.font-medium]="hasVotedFor(seg.group, fv.fragment.id)"
                   (mouseenter)="showPopup(fv)"
                   (mouseleave)="hidePopupSoon(fv)"
                   >{{ fv.fragment.content }}</span
-                >@if (canVote()) {<span
+                >
+                @if (canVote()) {
+                  <span
                     class="absolute left-1/2 top-full z-10 mt-1 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white p-2 shadow-lg"
                     [class.hidden]="!fv.hovering()"
                     (mouseenter)="showPopup(fv)"
@@ -66,9 +106,10 @@
                     >
                       Voter pour la modification
                     </button>
-                  </span
-                >}</span
-              >{{ !last ? ' / ' : '' }}}
+                  </span>
+                }</span
+              >{{ !last ? ' / ' : '' }}
+            }
           }
         }
       </p>

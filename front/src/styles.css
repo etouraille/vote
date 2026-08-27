@@ -2,6 +2,20 @@
 
 @import 'tailwindcss';
 
+/* The routed page fills the height app.html's <main> leaves it (see that
+   file). Components are inline by default, so without this a page asking
+   for height: 100% would resolve it against a box that has collapsed to
+   its own content. Blockified here rather than in each component, since it
+   is the shell's layout contract, not any one page's business. */
+/* :not(router-outlet) matters: Angular keeps the <router-outlet> tag in the
+   DOM and inserts the page as its *sibling*, so giving it a height would
+   hand a full screen to an empty element and push the real page below the
+   fold. */
+main > *:not(router-outlet) {
+  display: block;
+  height: 100%;
+}
+
 .ProseMirror {
   height: 100%;
   min-height: 100%;

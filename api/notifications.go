@@ -64,6 +64,33 @@ func (n *textNotifier) EditProposed(textID, title, actorID string) {
 	})
 }
 
+// RoundClosed notifies the followers of a text whose voting round has just
+// been closed — the moment the text actually changes, its winning fragments
+// spliced into a new version.
+//
+// text is the *fork* CloseRound produced, not the text the round was open
+// on, and that matters twice over. Closing migrates every subscription to
+// the fork and tombstones the originals (see Repository.CloseRound), so
+// resolving followers on the old id would find nobody at all. And the fork
+// is the version worth reading, so it is the id a tapped notification
+// should open.
+//
+// actorID is empty when the scheduled-close worker is the one closing:
+// nobody performed the action, so nobody is excluded from hearing about it.
+func (n *textNotifier) RoundClosed(text *queel.Text, actorID string) {
+	n.notify(text.ID, actorID, notify.Notification{
+		Title: "Tour de vote clos",
+		Body:  fmt.Sprintf("Le vote sur « %s » est clos, la nouvelle version est disponible.", text.Title),
+		Data: map[string]string{
+			// Not edit-proposed: there is no round open on a freshly forked
+			// text, so a client following this lands on the text itself
+			// rather than on an empty vote page.
+			"type":   "text.round-closed",
+			"textId": text.ID,
+		},
+	})
+}
+
 // notify delivers n to everyone following textID, except actorID — whoever
 // caused the change does not need telling, and since CreateText subscribes
 // an author to their own text, skipping this would notify them of every
@@ -80,14 +107,63 @@ func (n *textNotifier) notify(textID, actorID string, notification notify.Notifi
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 		defer cancel()
+		n.deliver(ctx, textID, actorID, notification)
+	}()
+}
 
-		recipients, err := n.recipients(ctx, textID, actorID)
+// deliver is notify's body, split out for VoteCast — which has to work out
+// which text it is even about before it can name an audience, and so needs
+// the fan-out without the goroutine notify wraps around it.
+func (n *textNotifier) deliver(ctx context.Context, textID, actorID string, notification notify.Notification) {
+	recipients, err := n.recipients(ctx, textID, actorID)
+	if err != nil {
+		log.Printf("notify: resolving recipients for text %s: %v", textID, err)
+		return
+	}
+
+	n.dispatcher.Notify(ctx, notification, recipients)
+}
+
+// VoteCast notifies the followers of a text somebody has just voted on.
+//
+// Identified by fragment rather than by text, because that is all the vote
+// route knows: a fragment carries the text it belongs to, so the audience
+// is resolved from it here. Both lookups run inside the goroutine, off the
+// request that cast the vote — the voter waits for their vote to be
+// recorded, not for everyone else to be told about it.
+//
+// Unlike the other events, this one can fire often: a text under active
+// voting notifies every follower on every vote.
+func (n *textNotifier) VoteCast(fragmentID, actorID string) {
+	if n == nil || n.dispatcher == nil {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
+		defer cancel()
+
+		fragment, err := n.repo.Fragment(fragmentID)
 		if err != nil {
-			log.Printf("notify: resolving recipients for text %s: %v", textID, err)
+			log.Printf("notify: resolving the text of fragment %s: %v", fragmentID, err)
+			return
+		}
+		text, err := n.repo.Text(fragment.TextID)
+		if err != nil {
+			log.Printf("notify: loading text %s for a vote notification: %v", fragment.TextID, err)
 			return
 		}
 
-		n.dispatcher.Notify(ctx, notification, recipients)
+		n.deliver(ctx, text.ID, actorID, notify.Notification{
+			Title: "Nouveau vote",
+			Body:  fmt.Sprintf("Un vote vient d'être déposé sur « %s ».", text.Title),
+			Data: map[string]string{
+				// A vote can only be cast while a round is open, so the
+				// round is where a tapped notification should land.
+				"type":   "text.vote-cast",
+				"textId": text.ID,
+			},
+		})
 	}()
 }
 
@@ -157,6 +233,17 @@ func buildDispatcher(store *Store, serviceAccountPath string) *notify.Dispatcher
 	if mailConfigured() {
 		channels = append(channels, notify.NewEmailChannel(sendEmail))
 	}
+
+	// The inbox is the one channel that needs no configuring: the store is
+	// always there, so every deployment gets a readable history even when
+	// no push or mail provider is set up. It also flattens the
+	// notification into columns here rather than in notify, which has no
+	// business knowing what a text id is — the Data map is the contract
+	// between the two (see notify.Notification).
+	channels = append(channels, notify.NewInboxChannel(
+		func(ctx context.Context, userIDs []string, n notify.Notification) error {
+			return store.SaveNotifications(ctx, userIDs, n.Data["type"], n.Data["textId"], n.Title, n.Body)
+		}))
 
 	dispatcher := notify.NewDispatcher(channels...)
 	log.Printf("notify: channels enabled: %v", dispatcher.Channels())

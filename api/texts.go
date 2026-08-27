@@ -109,12 +109,19 @@ func createTextHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 // same Subscribed role as SearchResult's, decorated here rather than on
 // queel.Text itself since it depends on who's asking, not on the text.
 type recentTextResult struct {
-	ID         string    `json:"id"`
-	Title      string    `json:"title"`
-	Content    string    `json:"content"`
-	Finalized  bool      `json:"finalized"`
-	CreatedAt  time.Time `json:"createdAt"`
-	Subscribed bool      `json:"subscribed"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	Finalized bool      `json:"finalized"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// RoundNumber is which round is currently open on this text — the same
+	// count SearchResult carries, so both listings can label a text with
+	// where it stands. Never 0 for a text created since rounds began
+	// opening with the text itself (see queel's CreateText).
+	RoundNumber int `json:"roundNumber"`
+
+	Subscribed bool `json:"subscribed"`
 }
 
 // recentTextsHandler lists the most recently created texts — for the home
@@ -163,13 +170,23 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, "erreur serveur")
 				return
 			}
+			// RoundCount, not CurrentRound: it answers with one Get rather
+			// than two, and for a text that has an open round the two say
+			// the same thing — the open round is always the latest.
+			roundNumber, err := repo.RoundCount(text.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "erreur serveur")
+				return
+			}
+
 			results = append(results, recentTextResult{
-				ID:         text.ID,
-				Title:      text.Title,
-				Content:    text.Content,
-				Finalized:  text.Finalized,
-				CreatedAt:  text.CreatedAt,
-				Subscribed: subscribed,
+				ID:          text.ID,
+				Title:       text.Title,
+				Content:     text.Content,
+				Finalized:   text.Finalized,
+				CreatedAt:   text.CreatedAt,
+				RoundNumber: roundNumber,
+				Subscribed:  subscribed,
 			})
 		}
 		writeJSON(w, http.StatusOK, results)

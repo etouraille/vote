@@ -16,5 +16,32 @@
            run every paragraph together. -->
       <p class="text-sm whitespace-pre-wrap text-slate-700">{{ text.content }}</p>
     </article>
+
+    <!-- Under the text, not above it: the decision to follow a text is one
+         you make having read it. Absent entirely while subscribed() is null
+         — the follow state isn't known yet, or couldn't be fetched. -->
+    @if (subscribed() === false && canSubscribe()) {
+      <div class="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          (click)="subscribe()"
+          [disabled]="subscribing()"
+          class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm disabled:opacity-50"
+        >
+          {{ subscribing() ? 'Abonnement…' : "S'abonner" }}
+        </button>
+        <span class="text-xs text-slate-500">
+          Suivre ce texte pour être prévenu de ses modifications et pouvoir voter dessus.
+        </span>
+      </div>
+    } @else if (subscribed()) {
+      <!-- A marker, not a button: there is no unsubscribe route, so
+           offering one would be a control that can't do anything. -->
+      <p class="mt-4 text-xs text-emerald-700">Vous suivez ce texte.</p>
+    }
+
+    @if (subscribeError(); as error) {
+      <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+    }
   }
 </div>

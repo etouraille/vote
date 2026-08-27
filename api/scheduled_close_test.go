@@ -61,7 +61,11 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	go runScheduledCloseWorker(ctx, repo, index, 20*time.Millisecond, nil)
+	// nil notifier: textNotifier.notify returns early on a nil receiver by
+	// design (notifying is a side effect of closing, never a precondition
+	// of it), so these tests exercise the closing itself without standing
+	// up a dispatcher.
+	go runScheduledCloseWorker(ctx, repo, index, nil, 20*time.Millisecond, nil)
 
 	deadline := time.Now().Add(800 * time.Millisecond)
 	for time.Now().Before(deadline) {
@@ -108,7 +112,7 @@ func TestRunScheduledCloseWorkerRespectsIsLeader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	notLeader := func() bool { return false }
-	runScheduledCloseWorker(ctx, repo, index, 20*time.Millisecond, notLeader)
+	runScheduledCloseWorker(ctx, repo, index, nil, 20*time.Millisecond, notLeader)
 
 	if _, err := repo.CurrentRound(text.ID); err != nil {
 		t.Fatalf("a non-leader must never close a round, even an overdue one, got err=%v", err)
@@ -119,7 +123,7 @@ func TestRunScheduledCloseWorkerRespectsIsLeader(t *testing.T) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel2()
 	isLeader := func() bool { return true }
-	go runScheduledCloseWorker(ctx2, repo, index, 20*time.Millisecond, isLeader)
+	go runScheduledCloseWorker(ctx2, repo, index, nil, 20*time.Millisecond, isLeader)
 
 	deadline := time.Now().Add(800 * time.Millisecond)
 	for time.Now().Before(deadline) {
@@ -295,7 +299,7 @@ func TestRunScheduledCloseWorkerInClusterModeOnlyLeaderCloses(t *testing.T) {
 
 	followerCtx, cancelFollower := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancelFollower()
-	runScheduledCloseWorker(followerCtx, repo, index, 20*time.Millisecond, func() bool {
+	runScheduledCloseWorker(followerCtx, repo, index, nil, 20*time.Millisecond, func() bool {
 		return isScheduledCloseLeader(follower.membership, follower.self)
 	})
 	if _, err := repo.CurrentRound(text.ID); err != nil {
@@ -304,7 +308,7 @@ func TestRunScheduledCloseWorkerInClusterModeOnlyLeaderCloses(t *testing.T) {
 
 	leaderCtx, cancelLeader := context.WithTimeout(context.Background(), time.Second)
 	defer cancelLeader()
-	go runScheduledCloseWorker(leaderCtx, repo, index, 20*time.Millisecond, func() bool {
+	go runScheduledCloseWorker(leaderCtx, repo, index, nil, 20*time.Millisecond, func() bool {
 		return isScheduledCloseLeader(leader.membership, leader.self)
 	})
 

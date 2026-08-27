@@ -18,6 +18,7 @@ type permissionsRequest struct {
 	CanSelect        bool `json:"canSelect"`
 	CanEditSelection bool `json:"canEditSelection"`
 	CanUpdateText    bool `json:"canUpdateText"`
+	CanSubscribe     bool `json:"canSubscribe"`
 }
 
 // requireRoot writes a 403 and returns false unless the caller's claims
@@ -106,6 +107,7 @@ func assignPermissionsHandler(store *Store, rbacStore *rbac.Store) http.HandlerF
 			CanSelect:        req.CanSelect,
 			CanEditSelection: req.CanEditSelection,
 			CanUpdateText:    req.CanUpdateText,
+			CanSubscribe:     req.CanSubscribe,
 		}
 
 		var rbacUser *rbac.User

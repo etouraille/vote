@@ -187,18 +187,22 @@ func main() {
 	if clustered {
 		scheduledCloseLeaderCheck = func() bool { return isScheduledCloseLeader(membership, self) }
 	}
-	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, scheduledCloseInterval, scheduledCloseLeaderCheck)
 
 	// Notification fan-out. Every channel is optional (see .env.example):
 	// with none configured this still logs who would have been notified,
 	// so a missing provider never looks like a broken one.
+	//
+	// Built before the scheduled-close worker starts, since that worker
+	// closes rounds on its own and has to be able to say so.
 	notifier := newTextNotifier(textRepo, store, buildDispatcher(store, os.Getenv("FCM_SERVICE_ACCOUNT_FILE")))
+
+	go runScheduledCloseWorker(context.Background(), textRepo, searchIndex, notifier, scheduledCloseInterval, scheduledCloseLeaderCheck)
 
 	mux := http.NewServeMux()
 	// Outside the /api/... prefix on purpose — requireToken only gates that
 	// prefix, so orchestration can probe this without a bearer token.
 	mux.HandleFunc("GET /healthz", healthHandler(db, queelStore, membership))
-	mux.HandleFunc("POST /api/auth/register", registerHandler(store))
+	mux.HandleFunc("POST /api/auth/register", registerHandler(store, rbacStore))
 	mux.HandleFunc("POST /api/auth/login", loginHandler(store, rbacStore, []byte(jwtSecret)))
 	mux.HandleFunc("POST /api/auth/confirm", confirmHandler(store))
 	// Optional: only mounted once GOOGLE_CLIENT_ID is configured (see
@@ -221,18 +225,27 @@ func main() {
 	mux.HandleFunc("GET /api/texts/search", searchTextsHandler(searchIndex, textRepo))
 	mux.HandleFunc("GET /api/texts/{id}", getTextHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/{id}/with-slots", textWithSlotsHandler(textRepo))
+	mux.HandleFunc("GET /api/texts/{id}/history", historyHandler(textRepo))
 	mux.HandleFunc("PUT /api/texts/{id}", updateTextHandler(textRepo, notifier))
 	mux.HandleFunc("DELETE /api/texts/{id}", deleteTextHandler(textRepo, searchIndex))
 	mux.HandleFunc("POST /api/texts/{id}/slots", proposeEditHandler(textRepo, notifier))
 	mux.HandleFunc("GET /api/texts/{id}/slots/{slotId}/fragments", fragmentsForSlotHandler(textRepo))
-	mux.HandleFunc("POST /api/texts/{id}/close-round", closeRoundHandler(textRepo, searchIndex))
+	mux.HandleFunc("GET /api/texts/{id}/my-votes", myVotesHandler(textRepo))
+	mux.HandleFunc("POST /api/texts/{id}/close-round", closeRoundHandler(textRepo, searchIndex, notifier))
 	mux.HandleFunc("POST /api/texts/{id}/schedule-close", scheduleCloseHandler(textRepo))
 	mux.HandleFunc("POST /api/texts/{id}/subscribe", subscribeHandler(textRepo))
 	mux.HandleFunc("GET /api/me/subscriptions", subscriptionsHandler(textRepo))
 	mux.HandleFunc("POST /api/me/devices", registerDeviceHandler(store))
 	mux.HandleFunc("DELETE /api/me/devices", unregisterDeviceHandler(store))
+	// The inbox side of the notification fan-out (see notify.InboxChannel):
+	// what push delivered at the moment it happened, readable afterwards.
+	// Under /api/me/... like devices and subscriptions — every one of them
+	// takes its owner from the bearer token, never from the path.
+	mux.HandleFunc("GET /api/me/notifications", listNotificationsHandler(store))
+	mux.HandleFunc("PUT /api/me/notifications/{id}/read", setNotificationReadHandler(store))
+	mux.HandleFunc("POST /api/me/notifications/read-all", markAllNotificationsReadHandler(store))
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))
-	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo))
+	mux.HandleFunc("POST /api/fragments/{id}/vote", castVoteHandler(textRepo, notifier))
 
 	handler := withCORS(withBodyLimit(requireToken([]byte(jwtSecret), mux)))
 

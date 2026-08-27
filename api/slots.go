@@ -126,8 +126,13 @@ func proposeEditHandler(repo *queel.Repository, notifier *textNotifier) http.Han
 // text is indexed into the RAG search corpus. Indexing failures don't undo
 // the round closure — search is an enhancement on top of the voting
 // workflow, not a dependency of it.
-func closeRoundHandler(repo *queel.Repository, index *searchIndexer) http.HandlerFunc {
+func closeRoundHandler(repo *queel.Repository, index *searchIndexer, notifier *textNotifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
 		if !requirePermission(w, r, rbac.ActionCloseText) {
 			return
 		}
@@ -138,6 +143,10 @@ func closeRoundHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 		if err != nil {
 			if errors.Is(err, queel.ErrNoOpenRound) {
 				writeError(w, http.StatusConflict, "aucun tour de vote ouvert pour ce texte")
+				return
+			}
+			if errors.Is(err, queel.ErrEmptyRound) {
+				writeError(w, http.StatusConflict, "aucune modification n'a été proposée dans ce tour")
 				return
 			}
 			if errors.Is(err, queel.ErrNotFound) {
@@ -151,6 +160,10 @@ func closeRoundHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 		if err := index.IndexFinalizedText(r.Context(), outcome.Text); err != nil {
 			log.Printf("failed to index text %s (forked from %s) after closing round: %v", outcome.Text.ID, textID, err)
 		}
+
+		// On the fork, not on textID: closing moved every subscription over
+		// to it (see RoundClosed).
+		notifier.RoundClosed(outcome.Text, claims.Subject)
 
 		writeJSON(w, http.StatusOK, outcome)
 	}
@@ -205,6 +218,10 @@ func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
 		if err != nil {
 			if errors.Is(err, queel.ErrNoOpenRound) {
 				writeError(w, http.StatusConflict, "aucun tour de vote ouvert pour ce texte")
+				return
+			}
+			if errors.Is(err, queel.ErrEmptyRound) {
+				writeError(w, http.StatusConflict, "aucune modification n'a été proposée dans ce tour")
 				return
 			}
 			if errors.Is(err, queel.ErrNotFound) {

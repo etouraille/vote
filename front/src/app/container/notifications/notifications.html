@@ -1,0 +1,66 @@
+<div class="mx-auto min-h-full max-w-3xl px-4 py-8">
+  <div class="flex items-center justify-between pb-4">
+    <h1 class="text-lg font-semibold text-slate-900">Notifications</h1>
+    <!-- Only offered when it would do something — an "all read" button over
+         an already-read inbox can only disappoint. -->
+    @if (hasUnread()) {
+      <button
+        type="button"
+        (click)="markAllRead()"
+        [disabled]="marking()"
+        class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+      >
+        {{ marking() ? 'Patientez…' : 'Tout marquer comme lu' }}
+      </button>
+    }
+  </div>
+
+  @if (loadError(); as error) {
+    <p class="text-sm text-red-600">{{ error }}</p>
+  } @else if (items() === null) {
+    <p class="text-sm text-slate-400">Chargement…</p>
+  } @else if (items(); as list) {
+    @if (list.length === 0) {
+      <p class="py-16 text-center text-sm text-slate-400">
+        Aucune notification pour le moment.<br />
+        Vous serez prévenu ici quand un texte que vous suivez sera modifié.
+      </p>
+    } @else {
+      <ul class="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        @for (item of list; track item.id) {
+          <li class="flex items-start gap-3 px-4 py-3">
+            <!-- Unread is carried by a dot and by weight, not by colour
+                 alone — the distinction has to survive a colour-blind
+                 reader. -->
+            <span
+              class="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+              [class.bg-slate-900]="!item.read"
+              [class.bg-slate-200]="item.read"
+              [attr.aria-label]="item.read ? 'Lu' : 'Non lu'"
+            ></span>
+
+            <button type="button" (click)="open(item)" class="min-w-0 flex-1 text-left">
+              <span class="block text-sm text-slate-900" [class.font-semibold]="!item.read">{{
+                item.title
+              }}</span>
+              <span class="mt-0.5 block text-sm text-slate-600">{{ item.body }}</span>
+              <span class="mt-1 block text-xs text-slate-400">{{
+                item.createdAt | date: 'dd/MM/yyyy HH:mm'
+              }}</span>
+            </button>
+
+            <!-- The way back: without it, reading an entry by accident
+                 loses it in a list with no other marker. -->
+            <button
+              type="button"
+              (click)="setRead(item, !item.read)"
+              class="shrink-0 text-xs text-slate-400 hover:text-slate-700"
+            >
+              {{ item.read ? 'Non lu' : 'Lu' }}
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>

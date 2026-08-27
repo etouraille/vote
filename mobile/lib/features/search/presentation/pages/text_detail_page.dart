@@ -30,6 +30,11 @@ class _TextDetailPageState extends State<TextDetailPage> {
   bool? _subscribed;
   bool _subscribing = false;
 
+  /// Following a text is a permission of its own (see the api's
+  /// subscribeHandler). False until answered, so the button never flashes
+  /// up for someone who isn't allowed it.
+  bool _canSubscribe = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +46,7 @@ class _TextDetailPageState extends State<TextDetailPage> {
     // label the button, so it must not delay showing the text.
     final textRequest = SearchApi.text(widget.textId);
     final subscriptionsRequest = SubscriptionApi.list();
+    final permissionRequest = SubscriptionApi.canSubscribe();
 
     try {
       final text = await textRequest;
@@ -49,6 +55,13 @@ class _TextDetailPageState extends State<TextDetailPage> {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) setState(() => _error = 'Chargement impossible.');
+    }
+
+    try {
+      final allowed = await permissionRequest;
+      if (mounted) setState(() => _canSubscribe = allowed);
+    } catch (_) {
+      // Left false: an unanswered permission question is not a yes.
     }
 
     try {
@@ -95,20 +108,24 @@ class _TextDetailPageState extends State<TextDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_subscribed ?? false)
+                // Already following: a marker, not a control — there is no
+                // unsubscribe route to offer.
+                if (_subscribed ?? false) ...[
                   const Row(
                     children: [
                       Icon(Icons.check, size: 18),
                       SizedBox(width: 6),
                       Text('Abonné'),
                     ],
-                  )
-                else
+                  ),
+                  const SizedBox(height: 16),
+                ] else if (_canSubscribe) ...[
                   FilledButton(
                     onPressed: _subscribing ? null : _subscribe,
                     child: Text(_subscribing ? 'Abonnement…' : "S'abonner"),
                   ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
                 Text(text.content),
               ],
             ),

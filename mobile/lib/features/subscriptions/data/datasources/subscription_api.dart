@@ -12,6 +12,17 @@ class SubscriptionApi {
     await ApiClient.post(Endpoints.subscribe(textId), {});
   }
 
+  /// Whether the caller may follow a text at all — root implies it,
+  /// otherwise it's the canSubscribe permission. Same shape as
+  /// VoteApi.canVote, and for the same reason: the button stays hidden
+  /// without it rather than offering an action the api would refuse.
+  static Future<bool> canSubscribe() async {
+    final json = await ApiClient.get(Endpoints.me) as Map<String, dynamic>;
+    if (json['root'] == true) return true;
+    final permissions = json['permissions'] as Map<String, dynamic>?;
+    return permissions?['canSubscribe'] == true;
+  }
+
   /// The texts the signed-in user follows, most recently followed first.
   static Future<List<SubscribedText>> list() async {
     final json = await ApiClient.get(Endpoints.subscriptions);

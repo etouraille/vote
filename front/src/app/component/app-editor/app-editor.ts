@@ -6,6 +6,8 @@ import {
   ViewChild
 } from '@angular/core';
 
+import { baseKeymap } from "prosemirror-commands";
+import { keymap } from "prosemirror-keymap";
 import { Node as PMNode, Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -125,7 +127,13 @@ export class EditorComponent implements AfterViewInit {
       {
         state: EditorState.create({
           schema,
-          doc
+          doc,
+          // Without a keymap ProseMirror binds no keys at all, so Enter did
+          // nothing and a text could only ever be one paragraph long.
+          // baseKeymap is what makes it split the block — which getText()
+          // then renders as the "\n" docFromText splits back on, so a line
+          // break survives the round trip through the api.
+          plugins: [keymap(baseKeymap)]
         })
       }
     );

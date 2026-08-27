@@ -2,7 +2,17 @@ import { HttpClient } from '@angular/common/http';
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from '../api-base-url';
-import { CreateTextResponse, Fragment, RecentText, SearchResult, Text, TextWithSlots } from '../model/text.model';
+import {
+  CreateTextResponse,
+  Fragment,
+  HistoryVersion,
+  RoundOutcome,
+  RecentText,
+  SearchResult,
+  SubscribedText,
+  Text,
+  TextWithSlots,
+} from '../model/text.model';
 
 @Service()
 export class TextService {
@@ -30,36 +40,64 @@ export class TextService {
     return this.http.get<TextWithSlots>(`${API_BASE_URL}/api/texts/${id}/with-slots`);
   }
 
+  // Every version of a text, oldest first, each with the rounds that ran
+  // on it. Any version's id works: the api walks the chain both ways.
+  history(id: string): Observable<HistoryVersion[]> {
+    return this.http.get<HistoryVersion[]>(`${API_BASE_URL}/api/texts/${id}/history`);
+  }
+
   update(id: string, title: string, content: string): Observable<CreateTextResponse> {
     return this.http.put<CreateTextResponse>(`${API_BASE_URL}/api/texts/${id}`, { title, content });
   }
 
   search(query: string): Observable<SearchResult[]> {
-    return this.http.get<SearchResult[]>(`${API_BASE_URL}/api/texts/search`, { params: { q: query } });
+    return this.http.get<SearchResult[]>(`${API_BASE_URL}/api/texts/search`, {
+      params: { q: query },
+    });
   }
 
   proposeEdit(textId: string, start: number, end: number, content: string): Observable<Fragment> {
-    return this.http.post<Fragment>(`${API_BASE_URL}/api/texts/${textId}/slots`, { start, end, content });
+    return this.http.post<Fragment>(`${API_BASE_URL}/api/texts/${textId}/slots`, {
+      start,
+      end,
+      content,
+    });
   }
 
   fragmentsForSlot(textId: string, slotId: string): Observable<Fragment[]> {
-    return this.http.get<Fragment[]>(`${API_BASE_URL}/api/texts/${textId}/slots/${slotId}/fragments`);
+    return this.http.get<Fragment[]>(
+      `${API_BASE_URL}/api/texts/${textId}/slots/${slotId}/fragments`,
+    );
   }
 
   getFragment(id: string): Observable<Fragment> {
     return this.http.get<Fragment>(`${API_BASE_URL}/api/fragments/${id}`);
   }
 
+  // Which fragment the caller currently has voted for in each slot of a
+  // text, keyed by slot id — slots they haven't voted in are absent. Lets
+  // the vote page show a choice made in an earlier session, which the
+  // fragments listing alone can't tell it.
+  myVotes(textId: string): Observable<Record<string, string>> {
+    return this.http.get<Record<string, string>>(`${API_BASE_URL}/api/texts/${textId}/my-votes`);
+  }
+
   castVote(fragmentId: string): Observable<unknown> {
     return this.http.post(`${API_BASE_URL}/api/fragments/${fragmentId}/vote`, {});
   }
 
-  closeRound(textId: string): Observable<unknown> {
-    return this.http.post(`${API_BASE_URL}/api/texts/${textId}/close-round`, {});
+  // Answers with the new version the close produced, not just an ack — the
+  // caller is showing the text that was closed and needs to move on to the
+  // one that replaced it.
+  closeRound(textId: string): Observable<RoundOutcome> {
+    return this.http.post<RoundOutcome>(`${API_BASE_URL}/api/texts/${textId}/close-round`, {});
   }
 
   scheduleClose(textId: string, days: number): Observable<{ scheduledCloseAt: string }> {
-    return this.http.post<{ scheduledCloseAt: string }>(`${API_BASE_URL}/api/texts/${textId}/schedule-close`, { days });
+    return this.http.post<{ scheduledCloseAt: string }>(
+      `${API_BASE_URL}/api/texts/${textId}/schedule-close`,
+      { days },
+    );
   }
 
   deleteText(id: string): Observable<unknown> {
@@ -67,6 +105,15 @@ export class TextService {
   }
 
   subscribe(textId: string): Observable<{ subscribed: boolean }> {
-    return this.http.post<{ subscribed: boolean }>(`${API_BASE_URL}/api/texts/${textId}/subscribe`, {});
+    return this.http.post<{ subscribed: boolean }>(
+      `${API_BASE_URL}/api/texts/${textId}/subscribe`,
+      {},
+    );
+  }
+
+  // The texts the caller follows, newest subscription first. The caller is
+  // taken from the bearer token, so nothing identifies them in the url.
+  subscriptions(): Observable<SubscribedText[]> {
+    return this.http.get<SubscribedText[]>(`${API_BASE_URL}/api/me/subscriptions`);
   }
 }

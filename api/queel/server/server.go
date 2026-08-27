@@ -40,11 +40,13 @@ func NewHandler(repo *queel.Repository, jwtSecret []byte) http.Handler {
 	mux.HandleFunc("DELETE /texts/{id}", deleteTextHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/propose-edit", proposeEditHandler(repo, jwtSecret))
 	mux.HandleFunc("GET /texts/{id}/round", currentRoundHandler(repo))
+	mux.HandleFunc("GET /texts/{id}/history", historyHandler(repo))
 	mux.HandleFunc("POST /texts/{id}/close-round", closeRoundHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/schedule-close", scheduleCloseHandler(repo, jwtSecret))
-	mux.HandleFunc("POST /texts/{id}/subscribe", subscribeHandler(repo))
+	mux.HandleFunc("POST /texts/{id}/subscribe", subscribeHandler(repo, jwtSecret))
 	mux.HandleFunc("GET /users/{userId}/subscriptions", subscriptionsHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/slots/{slotId}/fragments", fragmentsHandler(repo))
+	mux.HandleFunc("GET /texts/{id}/votes/{userId}", userVotesHandler(repo))
 	mux.HandleFunc("GET /fragments/{id}", getFragmentHandler(repo))
 	mux.HandleFunc("POST /vote", castVoteHandler(repo, jwtSecret))
 	mux.HandleFunc("GET /fragments/{id}/votes", voteCountHandler(repo))
@@ -106,7 +108,7 @@ func writeRepositoryError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, queel.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, queel.ErrNoOpenRound):
+	case errors.Is(err, queel.ErrNoOpenRound), errors.Is(err, queel.ErrEmptyRound):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.As(err, &superseded):
 		// supersededBy names the current version — enough for a caller to
@@ -184,8 +186,50 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		writeJSON(w, http.StatusOK, texts)
+
+		// userId is optional here, unlike on the api where the caller is
+		// always known from their token: this package never reads claims
+		// for identity. Without it the listing simply omits whether each
+		// text is followed, since there is nobody to answer that about.
+		userID := r.URL.Query().Get("userId")
+
+		results := make([]recentTextResult, 0, len(texts))
+		for _, text := range texts {
+			roundNumber, err := repo.RoundCount(text.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+
+			subscribed := false
+			if userID != "" {
+				if subscribed, err = repo.IsSubscribed(userID, text.ID); err != nil {
+					writeError(w, http.StatusInternalServerError, "internal error")
+					return
+				}
+			}
+
+			results = append(results, recentTextResult{
+				Text:        text,
+				RoundNumber: roundNumber,
+				Subscribed:  subscribed,
+			})
+		}
+		writeJSON(w, http.StatusOK, results)
 	}
+}
+
+// recentTextResult mirrors the api's own listing shape: a text plus which
+// round it is on, and — when a userId was given — whether that user
+// follows it.
+//
+// The text is embedded rather than restated field by field, so this stays
+// a decoration of queel.Text instead of a second definition of it that
+// could drift.
+type recentTextResult struct {
+	*queel.Text
+	RoundNumber int  `json:"roundNumber"`
+	Subscribed  bool `json:"subscribed"`
 }
 
 func getTextHandler(repo *queel.Repository) http.HandlerFunc {
@@ -389,8 +433,18 @@ type subscribeResponse struct {
 // api/subscriptions.go's subscribeHandler; since server never derives
 // identity from a token (see the package doc), the caller passes userId
 // directly instead of it coming from JWT claims.
-func subscribeHandler(repo *queel.Repository) http.HandlerFunc {
+func subscribeHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Mirrors the api's own gating (rbac.ActionSubscribe): following a
+		// text is what surfaces its vote/edit/close actions and what puts
+		// someone on the notification fan-out, so it is a decision an
+		// install gets to make per user. Identity still comes from the
+		// body, as everywhere in this package — the token is read for
+		// permissions only, never for who the caller is.
+		if !checkAction(w, r, jwtSecret, rbac.ActionSubscribe) {
+			return
+		}
+
 		var req subscribeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
@@ -421,6 +475,124 @@ type subscribedText struct {
 // A subscription whose text no longer exists is skipped: nothing prunes
 // subscriptions when a text is deleted, so one dangling id must not fail
 // the whole listing.
+// userVotesHandler mirrors the api's own my-votes route: which fragment a
+// user currently has voted for in each slot of a text, keyed by slot id.
+//
+// The user is named in the path rather than taken from a token, as
+// everywhere in this package — it never reads claims for identity, only
+// for permissions. Ungated for the same reason the api leaves it ungated:
+// reading choices already made is not voting.
+func userVotesHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		votes, err := repo.UserVotes(r.PathValue("id"), r.PathValue("userId"))
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+
+		// Never nil, so an empty result marshals as {} rather than null.
+		writeJSON(w, http.StatusOK, votes)
+	}
+}
+
+// historyVersion mirrors the api's own history shape: one link of a text's
+// chain of versions, with the rounds that ran on it.
+type historyVersion struct {
+	TextID    string         `json:"textId"`
+	Title     string         `json:"title"`
+	Content   string         `json:"content"`
+	Finalized bool           `json:"finalized"`
+	Rounds    []historyRound `json:"rounds"`
+}
+
+type historyRound struct {
+	Number int           `json:"number"`
+	Status string        `json:"status"`
+	Slots  []historySlot `json:"slots"`
+}
+
+type historySlot struct {
+	SlotID   string `json:"slotId"`
+	Original string `json:"original"`
+	Winner   string `json:"winner"`
+	Votes    int    `json:"votes"`
+	AuthorID string `json:"authorId,omitempty"`
+}
+
+// historyHandler returns every version of a text, oldest first, each with
+// the rounds that ran on it and how their slots were settled.
+//
+// Any version's id is a valid entry point — the chain is walked both ways
+// (see queel.Repository.TextChain). Ungated, like every other read here.
+func historyHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		chain, err := repo.TextChain(r.PathValue("id"))
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+
+		versions := make([]historyVersion, 0, len(chain))
+		for _, text := range chain {
+			rounds, err := repo.RoundsForText(text.ID)
+			if err != nil {
+				writeRepositoryError(w, err)
+				return
+			}
+
+			version := historyVersion{
+				TextID:    text.ID,
+				Title:     text.Title,
+				Content:   text.Content,
+				Finalized: text.Finalized,
+				Rounds:    make([]historyRound, 0, len(rounds)),
+			}
+
+			runes := []rune(text.Content)
+			for _, round := range rounds {
+				resolved := historyRound{
+					Number: round.Number,
+					Status: string(round.Status),
+					Slots:  make([]historySlot, 0, len(round.Slots)),
+				}
+
+				for _, slot := range round.Slots {
+					winner, err := repo.WinningFragment(text.ID, slot.ID)
+					if err != nil {
+						if errors.Is(err, queel.ErrNotFound) {
+							continue
+						}
+						writeRepositoryError(w, err)
+						return
+					}
+					votes, err := repo.VoteCount(winner.ID)
+					if err != nil {
+						writeRepositoryError(w, err)
+						return
+					}
+					if slot.Start < 0 || slot.End > len(runes) || slot.Start > slot.End {
+						continue
+					}
+
+					resolved.Slots = append(resolved.Slots, historySlot{
+						SlotID:   slot.ID,
+						Original: string(runes[slot.Start:slot.End]),
+						Winner:   winner.Content,
+						Votes:    votes,
+						AuthorID: winner.AuthorID,
+					})
+				}
+
+				version.Rounds = append(version.Rounds, resolved)
+			}
+
+			versions = append(versions, version)
+		}
+
+		writeJSON(w, http.StatusOK, versions)
+	}
+}
+
 func subscriptionsHandler(repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		textIDs, err := repo.SubscriptionsForUser(r.PathValue("userId"))

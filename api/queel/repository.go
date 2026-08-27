@@ -15,6 +15,17 @@ import (
 var (
 	ErrNotFound    = errors.New("not found")
 	ErrNoOpenRound = errors.New("no open round for this text")
+
+	// ErrEmptyRound is returned by CloseRound and ScheduleRoundClose for a
+	// round in which nobody has proposed anything.
+	//
+	// It exists because every text now carries an open round from creation
+	// onwards (see openRoundOps), so "there is a round" no longer implies
+	// "there is something to resolve". Closing an empty one would splice
+	// nothing and fork a byte-for-byte copy of the text — a new id, a new
+	// entry in the search corpus, and a version chain one step longer, all
+	// saying exactly what the previous version already said.
+	ErrEmptyRound = errors.New("no proposal has been made in this round")
 )
 
 // ErrTextSuperseded is returned by ProposeEdit when TextID has already been
@@ -152,8 +163,28 @@ func votePrefix(fragmentID string) []byte {
 	return []byte(fmt.Sprintf("vote/%s/", fragmentID))
 }
 
+// roundIndexKey lets "every round ever opened on this text" be a prefix
+// scan. Rounds are stored under their own id alone (roundKey), which is
+// enough to follow currentRoundKey to the open one but leaves closed ones
+// unreachable from the text they belong to — the same double-storage
+// fragment/fragmentindex already uses, for the same reason.
+func roundIndexKey(textID, roundID string) []byte {
+	return []byte(fmt.Sprintf("roundindex/%s/%s", textID, roundID))
+}
+
+func roundIndexPrefix(textID string) []byte {
+	return []byte(fmt.Sprintf("roundindex/%s/", textID))
+}
+
 func userChoiceKey(textID, slotID, userID string) []byte {
 	return []byte(fmt.Sprintf("uservote/%s/%s/%s", textID, slotID, userID))
+}
+
+// userChoicePrefix scans every current choice recorded on one text, all
+// slots and all users at once. The key leads with the text id, so the one
+// scan is free; who each entry belongs to is its last segment.
+func userChoicePrefix(textID string) string {
+	return fmt.Sprintf("uservote/%s/", textID)
 }
 
 // CreateText creates a new text from its initial content, attributed to
@@ -183,11 +214,22 @@ func (r *Repository) CreateText(title, content, authorID string) (*Text, error) 
 		return nil, err
 	}
 
-	if err := r.store.WriteBatch([]WriteOp{
+	// Round 1 opens with the text itself: a text with no round is one
+	// nobody can propose against or vote on, and there is no step between
+	// creating it and it being open for exactly that. It carries no slots
+	// until someone selects a range (see openRoundOps).
+	roundOps, _, err := openRoundOps(id, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	ops := append([]WriteOp{
 		{Key: textKey(id), Value: payload},
 		{Key: subscriptionKey(id, authorID), Value: subPayload},
 		{Key: subscriptionIndexKey(authorID, id), Value: []byte(id)},
-	}); err != nil {
+	}, roundOps...)
+
+	if err := r.store.WriteBatch(ops); err != nil {
 		return nil, err
 	}
 	return text, nil
@@ -319,6 +361,13 @@ func (r *Repository) ScheduleRoundClose(textID string, closeAt time.Time) (*Roun
 			return nil, ErrNoOpenRound
 		}
 		return nil, err
+	}
+
+	// Refused rather than allowed on the chance a proposal arrives before
+	// the date: if none does, the worker would find a round it can never
+	// close (see ErrEmptyRound) and retry it on every tick, for good.
+	if len(round.Slots) == 0 {
+		return nil, ErrEmptyRound
 	}
 
 	round.ScheduledCloseAt = &closeAt
@@ -506,7 +555,64 @@ func (r *Repository) TextWithSlots(id string) (*TextWithSlots, error) {
 		return nil, err
 	}
 
-	return &TextWithSlots{Text: text, RoundNumber: round.Number, Slots: round.Slots}, nil
+	// Never nil, as this type's doc promises: a Round that nobody has
+	// proposed against yet carries a nil Slots, and callers marshalling
+	// this to JSON would get `null` where they were told to expect `[]`.
+	slots := round.Slots
+	if slots == nil {
+		slots = []Slot{}
+	}
+	return &TextWithSlots{Text: text, RoundNumber: round.Number, Slots: slots}, nil
+}
+
+// nextRoundNumber is the number the next round opened on textID will take:
+// one past however many have ever been opened on it (see Round.Number).
+func (r *Repository) nextRoundNumber(textID string) (int, error) {
+	value, found, err := r.store.Get(roundCountKey(textID))
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 1, nil
+	}
+	previous, err := strconv.Atoi(string(value))
+	if err != nil {
+		return 0, err
+	}
+	return previous + 1, nil
+}
+
+// openRoundOps is the writes that open round `number` on textID, without
+// performing them.
+//
+// Separated from openRound so CreateText and CloseRound can fold them into
+// the batch they were already writing: both now open a round as part of
+// what they do, and a second WriteBatch would leave a window where the text
+// exists (or the fork does) with no round on it — briefly on a single node,
+// indefinitely if the second write failed.
+//
+// The round it opens carries no slots. That is a real state, not a
+// placeholder: a slot only comes into existence when somebody selects a
+// range (see ProposeEdit), so an open round with nothing in it is exactly
+// "this text is open for proposals, none made yet".
+func openRoundOps(textID string, number int) ([]WriteOp, *Round, error) {
+	id, err := newID()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	round := &Round{ID: id, TextID: textID, Number: number, Status: RoundStatusOpen, CreatedAt: time.Now()}
+	payload, err := json.Marshal(round)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return []WriteOp{
+		{Key: roundKey(id), Value: payload},
+		{Key: currentRoundKey(textID), Value: []byte(id)},
+		{Key: roundCountKey(textID), Value: []byte(strconv.Itoa(number))},
+		{Key: roundIndexKey(textID, id), Value: []byte(id)},
+	}, round, nil
 }
 
 func (r *Repository) openRound(textID string) (*Round, error) {
@@ -516,33 +622,16 @@ func (r *Repository) openRound(textID string) (*Round, error) {
 		return nil, &ErrTextSuperseded{TextID: textID, SupersededBy: string(supersededBy)}
 	}
 
-	id, err := newID()
+	number, err := r.nextRoundNumber(textID)
 	if err != nil {
 		return nil, err
 	}
 
-	number := 1
-	if value, found, err := r.store.Get(roundCountKey(textID)); err != nil {
-		return nil, err
-	} else if found {
-		previous, err := strconv.Atoi(string(value))
-		if err != nil {
-			return nil, err
-		}
-		number = previous + 1
-	}
-
-	round := &Round{ID: id, TextID: textID, Number: number, Status: RoundStatusOpen, CreatedAt: time.Now()}
-
-	payload, err := json.Marshal(round)
+	ops, round, err := openRoundOps(textID, number)
 	if err != nil {
 		return nil, err
 	}
-	if err := r.store.WriteBatch([]WriteOp{
-		{Key: roundKey(id), Value: payload},
-		{Key: currentRoundKey(textID), Value: []byte(id)},
-		{Key: roundCountKey(textID), Value: []byte(strconv.Itoa(number))},
-	}); err != nil {
+	if err := r.store.WriteBatch(ops); err != nil {
 		return nil, err
 	}
 	return round, nil
@@ -733,6 +822,128 @@ func (r *Repository) CastVote(fragmentID, userID string) error {
 	return r.store.WriteBatch(ops)
 }
 
+// UserVotes maps each slot of textID to the fragment userID currently has
+// voted for in it. Slots they have not voted in are absent rather than
+// present with an empty value, so a caller can tell "no vote" from "voted
+// for nothing" — the latter doesn't exist.
+//
+// One scan of the whole text's choices, filtered here, rather than a Get
+// per slot: the key leads with the text id, so a text with twenty slots
+// costs one round trip instead of twenty.
+//
+// This is what lets a client show a vote made in an earlier session — the
+// choice has always been recorded (see CastVote), it simply had no way out
+// of the store until now.
+func (r *Repository) UserVotes(textID, userID string) (map[string]string, error) {
+	prefix := userChoicePrefix(textID)
+	kvs, err := r.store.Scan([]byte(prefix))
+	if err != nil {
+		return nil, err
+	}
+
+	votes := make(map[string]string)
+	for _, kv := range kvs {
+		slotID, keyUserID, ok := strings.Cut(strings.TrimPrefix(string(kv.Key), prefix), "/")
+		if !ok || keyUserID != userID {
+			continue
+		}
+		votes[slotID] = string(kv.Value)
+	}
+	return votes, nil
+}
+
+// RoundsForText returns every round ever opened on this exact version of a
+// text, oldest first — the closed one that forked it into the next version,
+// and the open one if it still has any.
+//
+// "This exact version": closing forks a new Text, so a chain of versions
+// has one round each rather than one text with many. Walking the whole
+// history means walking the chain (see TextChain) and asking this for each
+// link.
+//
+// Rounds opened before roundIndexKey existed have no index entry and are
+// invisible here. They are still in the store under their own id; only
+// this listing can't reach them.
+func (r *Repository) RoundsForText(textID string) ([]*Round, error) {
+	kvs, err := r.store.Scan(roundIndexPrefix(textID))
+	if err != nil {
+		return nil, err
+	}
+
+	rounds := make([]*Round, 0, len(kvs))
+	for _, kv := range kvs {
+		value, found, err := r.store.Get(roundKey(string(kv.Value)))
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			// Indexed but gone: a delete that removed the round without
+			// its index entry. Skipped rather than failing the listing.
+			continue
+		}
+		var round Round
+		if err := json.Unmarshal(value, &round); err != nil {
+			return nil, err
+		}
+		rounds = append(rounds, &round)
+	}
+
+	sort.Slice(rounds, func(i, j int) bool { return rounds[i].Number < rounds[j].Number })
+	return rounds, nil
+}
+
+// TextChain returns every version of a text in order, from the original
+// down to the current one, whichever version's id is passed in.
+//
+// Both directions are walked: PreviousTextID leads back to the root, and
+// supersededby leads forward to the tip. Neither alone is enough, since
+// the caller may hold any link of the chain — typically the latest, which
+// has no forward pointer, or an old one found in a notification.
+func (r *Repository) TextChain(textID string) ([]*Text, error) {
+	text, err := r.Text(textID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Backwards to the root, collecting as we go.
+	chain := []*Text{text}
+	for current := text; current.PreviousTextID != ""; {
+		previous, err := r.Text(current.PreviousTextID)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				// A version deleted out from under the chain: stop rather
+				// than fail, what's left is still a true history.
+				break
+			}
+			return nil, err
+		}
+		chain = append([]*Text{previous}, chain...)
+		current = previous
+	}
+
+	// Forwards to the tip.
+	for current := text; ; {
+		value, found, err := r.store.Get(supersededByKey(current.ID))
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			break
+		}
+		next, err := r.Text(string(value))
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				break
+			}
+			return nil, err
+		}
+		chain = append(chain, next)
+		current = next
+	}
+
+	return chain, nil
+}
+
 // VoteCount returns how many users currently have fragmentID as their active
 // vote.
 func (r *Repository) VoteCount(fragmentID string) (int, error) {
@@ -914,7 +1125,11 @@ func (r *Repository) DeleteUserTexts(userID string) ([]string, error) {
 			return nil, err
 		}
 		if targets[round.TextID] {
-			ops = append(ops, WriteOp{Key: roundKey(round.ID), Tombstone: true})
+			ops = append(ops,
+				WriteOp{Key: roundKey(round.ID), Tombstone: true},
+				// The index entry too, or a deleted text leaves rounds
+				// listed under it that no longer exist.
+				WriteOp{Key: roundIndexKey(round.TextID, round.ID), Tombstone: true})
 		}
 	}
 
@@ -992,7 +1207,9 @@ func (r *Repository) DeleteText(textID string) error {
 			return err
 		}
 		if round.TextID == textID {
-			ops = append(ops, WriteOp{Key: roundKey(round.ID), Tombstone: true})
+			ops = append(ops,
+				WriteOp{Key: roundKey(round.ID), Tombstone: true},
+				WriteOp{Key: roundIndexKey(round.TextID, round.ID), Tombstone: true})
 		}
 	}
 
@@ -1146,6 +1363,10 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 		return nil, err
 	}
 
+	if len(round.Slots) == 0 {
+		return nil, ErrEmptyRound
+	}
+
 	text, err := r.Text(textID)
 	if err != nil {
 		return nil, err
@@ -1200,13 +1421,22 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 	// ErrTextSuperseded) are all independent once the winners are resolved:
 	// one round trip covers all five. The old text itself is never written
 	// to again.
-	ops := []WriteOp{
+	// The fork opens its own round straight away, so a text is open for
+	// proposals from creation to its latest version without a gap — closing
+	// a round advances the deliberation rather than ending it. This also
+	// writes roundCountKey(newText.ID), which is why the count isn't
+	// carried forward here: the new round's own number is the count.
+	nextRoundOps, _, err := openRoundOps(newText.ID, round.Number+1)
+	if err != nil {
+		return nil, err
+	}
+
+	ops := append([]WriteOp{
 		{Key: textKey(newText.ID), Value: newTextPayload},
 		{Key: roundKey(round.ID), Value: roundPayload},
 		{Key: currentRoundKey(textID), Tombstone: true},
-		{Key: roundCountKey(newText.ID), Value: []byte(strconv.Itoa(round.Number))},
 		{Key: supersededByKey(textID), Value: []byte(newText.ID)},
-	}
+	}, nextRoundOps...)
 
 	subscriptionPrefix := "subscription/" + textID + "/"
 	subscriberKVs, err := r.store.Scan([]byte(subscriptionPrefix))
