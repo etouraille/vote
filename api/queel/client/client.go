@@ -179,6 +179,20 @@ func (c *Client) ProposeEdit(ctx context.Context, textID string, start, end int,
 	return &fragment, nil
 }
 
+// Subscribe makes userID follow textID.
+//
+// More than a preference now that acting on a text requires following it
+// (see the server's checkSubscription): without this, a caller could
+// propose an edit only on texts it had created itself, which CreateText
+// subscribes it to.
+//
+// Idempotent server-side — subscribing to a text already followed
+// succeeds, so a caller never has to check first.
+func (c *Client) Subscribe(ctx context.Context, textID, userID string) error {
+	body := map[string]string{"userId": userID}
+	return c.do(ctx, http.MethodPost, "/texts/"+textID+"/subscribe", body, nil)
+}
+
 // CurrentRound returns the open voting round for a text, if any.
 func (c *Client) CurrentRound(ctx context.Context, textID string) (*queel.Round, error) {
 	var round queel.Round

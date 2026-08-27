@@ -60,6 +60,10 @@ func proposeEditHandler(repo *queel.Repository, notifier *textNotifier) http.Han
 			return
 		}
 
+		if !requireSubscription(w, r, repo, textID) {
+			return
+		}
+
 		if req.Start < 0 || req.End <= req.Start {
 			writeError(w, http.StatusBadRequest, "plage de sélection invalide")
 			return
@@ -138,6 +142,9 @@ func closeRoundHandler(repo *queel.Repository, index *searchIndexer, notifier *t
 		}
 
 		textID := r.PathValue("id")
+		if !requireSubscription(w, r, repo, textID) {
+			return
+		}
 
 		outcome, err := repo.CloseRound(textID)
 		if err != nil {
@@ -197,6 +204,11 @@ func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
 		}
 
 		textID := r.PathValue("id")
+		// Scheduling a close is closing, only later — gated identically, or
+		// the rule would be one route wide.
+		if !requireSubscription(w, r, repo, textID) {
+			return
+		}
 
 		var req scheduleCloseRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

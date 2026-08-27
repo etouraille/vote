@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -501,5 +502,52 @@ func TestRecentTextsHandlerDecoratesEachText(t *testing.T) {
 	}
 	if stranger := get(t, "/texts?userId=reader-2"); stranger[0].Subscribed {
 		t.Fatal("expected reader-2 not to be reported as following the text")
+	}
+}
+
+// TestProposeEditRequiresSubscription pins the rule the front ends show: a
+// text is acted on by the people who follow it. Propose-edit is the case
+// that can be exercised end to end here, since it is the one route of the
+// four that already names its caller (the others take a userId query
+// parameter — see checkSubscription).
+func TestProposeEditRequiresSubscription(t *testing.T) {
+	repo := newTestRepo(t)
+	handler := NewHandler(repo, nil)
+
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "author-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := strings.Index(content, "francais")
+	propose := func() *httptest.ResponseRecorder {
+		body := strings.NewReader(fmt.Sprintf(
+			`{"start":%d,"end":%d,"content":"français","authorId":"alice"}`, start, start+len("francais")))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/texts/"+text.ID+"/propose-edit", body))
+		return rec
+	}
+
+	if rec := propose(); rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 from a user who doesn't follow the text, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if _, err := repo.Subscribe("alice", text.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := propose(); rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 once alice follows it, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// The author is subscribed by CreateText, so they never hit the rule on
+	// their own text — the case that would otherwise lock someone out of
+	// the text they just wrote.
+	authorBody := strings.NewReader(fmt.Sprintf(
+		`{"start":%d,"end":%d,"content":"francaise","authorId":"author-1"}`, start, start+len("francais")))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/texts/"+text.ID+"/propose-edit", authorBody))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected the author to propose on their own text, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

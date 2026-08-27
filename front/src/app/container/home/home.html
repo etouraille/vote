@@ -120,7 +120,12 @@
             >
               &rarr;
             </button>
-            @if (canAmendText()) {
+            <!-- Acting on a text requires following it: editing, closing a
+                 round and deleting are all withheld until then. Voting is
+                 the exception on purpose — settling a round somebody else
+                 opened is exactly what a passer-by should be able to do,
+                 and demanding a subscription first would thin the vote. -->
+            @if (canAmendText() && item.subscribed) {
               <a
                 [routerLink]="['/editor']"
                 [queryParams]="{ id: item.textId }"
@@ -149,7 +154,7 @@
                 >
               }
             }
-            @if (canCloseText()) {
+            @if (canCloseText() && item.subscribed) {
               <!-- No "round clos" state to show any more: closing swaps this
                  entry for the version it produced, which carries a round of
                  its own straight away. -->
@@ -162,7 +167,7 @@
                 {{ closingTextId() === item.textId ? 'Clôture…' : 'Clore un round' }}
               </button>
             }
-            @if (canDeleteText()) {
+            @if (canDeleteText() && item.subscribed) {
               <button
                 type="button"
                 (click)="deleteText(item)"

@@ -59,6 +59,13 @@ func TestClientFullRoundTrip(t *testing.T) {
 		t.Fatalf("Content = %q, want %q", fetched.Content, content)
 	}
 
+	// alice has to follow the text before she can propose against it: the
+	// server now refuses an edit from someone who hasn't taken it up (see
+	// checkSubscription).
+	if err := c.Subscribe(ctx, text.ID, "alice"); err != nil {
+		t.Fatal(err)
+	}
+
 	start, end := runeRange(content, "francais")
 	challenger, err := c.ProposeEdit(ctx, text.ID, start, end, "français", "alice")
 	if err != nil {
@@ -153,6 +160,13 @@ func TestClientTextWithSlots(t *testing.T) {
 	}
 	if empty.RoundNumber != 1 || len(empty.Slots) != 0 {
 		t.Fatalf("TextWithSlots on a fresh text = %+v, want RoundNumber 1 and no slots", empty)
+	}
+
+	// alice has to follow the text before she can propose against it: the
+	// server now refuses an edit from someone who hasn't taken it up (see
+	// checkSubscription).
+	if err := c.Subscribe(ctx, text.ID, "alice"); err != nil {
+		t.Fatal(err)
 	}
 
 	start, end := runeRange(content, "francais")

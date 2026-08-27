@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/etouraille/queel"
 	"github.com/etouraille/queel/rbac"
 )
 
@@ -88,6 +89,45 @@ func requirePermission(w http.ResponseWriter, r *http.Request, action rbac.Actio
 	}
 	if !claims.Allows(action) {
 		writeError(w, http.StatusForbidden, "droits insuffisants")
+		return false
+	}
+	return true
+}
+
+// requireSubscription writes a 403 and returns false unless the caller
+// follows textID — the api-side half of the rule the front ends show: a
+// text is acted on by the people who chose to follow it.
+//
+// Deliberately *on top of* requirePermission rather than instead of it.
+// The two answer different questions: the backoffice decides what an
+// account may ever do, following decides which texts it does it to. An
+// account without the permission is refused whatever it follows, and one
+// with it is still refused on a text it has not taken up.
+//
+// Root passes without following anything. It bypasses every rbac check
+// already (see rbac.Claims.Allows), and an administrator made to subscribe
+// to a text before removing it would be signing up for its notifications
+// just to moderate it.
+//
+// Voting is deliberately not gated this way: settling a round somebody
+// else opened is exactly what a passer-by should be able to do.
+func requireSubscription(w http.ResponseWriter, r *http.Request, repo *queel.Repository, textID string) bool {
+	claims, ok := claimsFromContext(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "token manquant")
+		return false
+	}
+	if claims.Root {
+		return true
+	}
+
+	subscribed, err := repo.IsSubscribed(claims.Subject, textID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "erreur serveur")
+		return false
+	}
+	if !subscribed {
+		writeError(w, http.StatusForbidden, "abonnez-vous à ce texte pour agir dessus")
 		return false
 	}
 	return true

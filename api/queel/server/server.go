@@ -81,6 +81,31 @@ func checkAction(w http.ResponseWriter, r *http.Request, jwtSecret []byte, actio
 	return true
 }
 
+// checkSubscription mirrors the api's own rule: a text is acted on by the
+// people who follow it (see the api's requireSubscription).
+//
+// userID empty means the caller did not name themselves, and this package
+// has no other way to know who they are — it never reads a token for
+// identity, only for permissions. The check then passes, exactly as
+// checkAction passes when no jwtSecret was configured: authorization here
+// is something an embedder opts into, not something the module imposes.
+func checkSubscription(w http.ResponseWriter, repo *queel.Repository, textID, userID string) bool {
+	if userID == "" {
+		return true
+	}
+
+	subscribed, err := repo.IsSubscribed(userID, textID)
+	if err != nil {
+		writeRepositoryError(w, err)
+		return false
+	}
+	if !subscribed {
+		writeError(w, http.StatusForbidden, "not subscribed to this text")
+		return false
+	}
+	return true
+}
+
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
 	const prefix = "Bearer "
@@ -269,6 +294,9 @@ func updateTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFun
 		if !checkAction(w, r, jwtSecret, rbac.ActionUpdateText) {
 			return
 		}
+		if !checkSubscription(w, repo, r.PathValue("id"), r.URL.Query().Get("userId")) {
+			return
+		}
 
 		var req updateTextRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -291,6 +319,9 @@ func updateTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFun
 func deleteTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !checkAction(w, r, jwtSecret, rbac.ActionCreateText) {
+			return
+		}
+		if !checkSubscription(w, repo, r.PathValue("id"), r.URL.Query().Get("userId")) {
 			return
 		}
 
@@ -342,6 +373,12 @@ func proposeEditHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFu
 			}
 		}
 
+		// This route already names its author, so unlike the three below
+		// the rule applies without a query parameter.
+		if !checkSubscription(w, repo, textID, req.AuthorID) {
+			return
+		}
+
 		fragment, err := repo.ProposeEdit(textID, req.Start, req.End, req.Content, req.AuthorID)
 		if err != nil {
 			writeRepositoryError(w, err)
@@ -365,6 +402,9 @@ func currentRoundHandler(repo *queel.Repository) http.HandlerFunc {
 func closeRoundHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !checkAction(w, r, jwtSecret, rbac.ActionCloseText) {
+			return
+		}
+		if !checkSubscription(w, repo, r.PathValue("id"), r.URL.Query().Get("userId")) {
 			return
 		}
 
@@ -396,6 +436,9 @@ type scheduleCloseResponse struct {
 func scheduleCloseHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !checkAction(w, r, jwtSecret, rbac.ActionCloseText) {
+			return
+		}
+		if !checkSubscription(w, repo, r.PathValue("id"), r.URL.Query().Get("userId")) {
 			return
 		}
 

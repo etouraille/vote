@@ -259,6 +259,13 @@ func updateTextHandler(repo *queel.Repository, notifier *textNotifier) http.Hand
 		}
 
 		id := r.PathValue("id")
+		// Rewriting a text outright is the strongest form of editing, so
+		// the rule that covers proposing a change has to cover it too —
+		// otherwise the route literally named "update text" is the way
+		// around it.
+		if !requireSubscription(w, r, repo, id) {
+			return
+		}
 
 		title, content, ok := decodeTextPayload(w, r)
 		if !ok {
@@ -302,6 +309,9 @@ func deleteTextHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 		}
 
 		id := r.PathValue("id")
+		if !requireSubscription(w, r, repo, id) {
+			return
+		}
 
 		deleteErr := repo.DeleteText(id)
 		if deleteErr != nil && !errors.Is(deleteErr, queel.ErrNotFound) {
