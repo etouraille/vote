@@ -17,7 +17,17 @@ CLUSTER_STOP_TIMEOUT ?= 30
 # launching the others anyway.
 CLUSTER_SEED_TIMEOUT ?= 15
 
-.PHONY: build run test clean cluster-up wait-for-seed cluster-check cluster-down cluster-orphans cluster-status cluster-clean
+# The other cluster binary startable from this directory — deploy/'s
+# api-embedded nodes (see deploy/Makefile's BINARY).
+#
+# Written truncated on purpose: Linux caps a process name at 15 characters,
+# so "vote-api-cluster" is only ever reported as "vote-api-cluste", and
+# `pgrep -x vote-api-cluster` matches nothing at all. Matching the full name
+# with `pgrep -f` instead would work, but it scans whole command lines and
+# so also matches this Makefile's own shell — which it would then kill.
+DEPLOY_BINARY_COMM := vote-api-cluste
+
+.PHONY: build run test clean cluster-up wait-for-seed cluster-check cluster-down cluster-kill cluster-orphans cluster-status cluster-clean
 
 build:
 	go build -o $(BINARY) ./cmd/queeld
@@ -178,6 +188,48 @@ cluster-status:
 	done; \
 	[ $$found -eq 1 ] || echo "no pid files in $(CLUSTER_DIR)/ — cluster not started from here"
 	@$(MAKE) --no-print-directory cluster-orphans
+
+# cluster-kill stops every cluster process startable from this directory,
+# tracked or not: the queeld nodes of cluster-up, the api nodes of deploy/,
+# and any orphan a previous run left behind after losing its pid file —
+# which cluster-down cannot reach, since it only ever walks pid files.
+#
+# Unlike cluster-down it signals them all at once instead of one at a time.
+# That ordering exists so a departing node can hand its data to nodes still
+# alive; when every node is going away there is no survivor left to hand it
+# to, so waiting between them would buy nothing.
+#
+# SIGTERM first all the same. A node that can still decommission does, and
+# only what is still alive after CLUSTER_STOP_TIMEOUT is SIGKILLed — the
+# signal it cannot trap, and so the one that skips the handoff entirely.
+cluster-kill:
+	@pids=$$(pgrep -x $(BINARY); pgrep -x $(DEPLOY_BINARY_COMM)); \
+	pids=$$(echo $$pids); \
+	if [ -z "$$pids" ]; then \
+		echo "cluster-kill: no cluster process running"; \
+	else \
+		echo "cluster-kill: SIGTERM -> $$pids"; \
+		kill -TERM $$pids 2>/dev/null || true; \
+		waited=0; \
+		while [ $$waited -lt $(CLUSTER_STOP_TIMEOUT) ]; do \
+			left=$$(echo $$(pgrep -x $(BINARY); pgrep -x $(DEPLOY_BINARY_COMM))); \
+			[ -z "$$left" ] && break; \
+			sleep 1; waited=$$((waited + 1)); \
+		done; \
+		left=$$(echo $$(pgrep -x $(BINARY); pgrep -x $(DEPLOY_BINARY_COMM))); \
+		if [ -n "$$left" ]; then \
+			echo "cluster-kill: still alive after $(CLUSTER_STOP_TIMEOUT)s, SIGKILL -> $$left" >&2; \
+			kill -KILL $$left 2>/dev/null || true; \
+			sleep 1; \
+		fi; \
+		left=$$(echo $$(pgrep -x $(BINARY); pgrep -x $(DEPLOY_BINARY_COMM))); \
+		if [ -n "$$left" ]; then \
+			echo "cluster-kill: FAILED to stop: $$left" >&2; \
+			exit 1; \
+		fi; \
+		echo "cluster-kill: all stopped (after $${waited}s)"; \
+	fi
+	@rm -f $(CLUSTER_DIR)/*.pid deploy/*.pid
 
 cluster-clean: cluster-down
 	rm -rf $(CLUSTER_DIR)
