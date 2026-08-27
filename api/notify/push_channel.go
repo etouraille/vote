@@ -115,6 +115,24 @@ func (p *PushChannel) sendOne(ctx context.Context, accessToken, deviceToken stri
 			"android": map[string]any{
 				"priority": "high",
 			},
+			// Web browsers ignore the android block above and read this
+			// one. A token is a token to FCM v1 — the same request reaches
+			// a phone or a tab depending only on where the token came from
+			// — but the per-platform blocks decide how it is rendered.
+			"webpush": map[string]any{
+				"headers": map[string]string{
+					// Without it a browser may collapse several
+					// notifications into one; "high" keeps each event its
+					// own line in the tray.
+					"Urgency": "high",
+				},
+				"fcm_options": map[string]string{
+					// Where a click lands when no tab is open. An open tab
+					// is focused and routed by event type instead (see the
+					// front's firebase-messaging-sw.js).
+					"link": "/notifications",
+				},
+			},
 		},
 	}
 	body, err := json.Marshal(payload)
