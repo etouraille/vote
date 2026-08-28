@@ -3,7 +3,6 @@
 // carries — one vocabulary shared by every client.
 export const NOTIFICATION_TYPES = {
   editProposed: 'text.edit-proposed',
-  updated: 'text.updated',
   roundClosed: 'text.round-closed',
   voteCast: 'text.vote-cast',
 } as const;

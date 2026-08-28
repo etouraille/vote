@@ -41,12 +41,6 @@ type Permissions struct {
 	// overlap another (see queel.ErrOverlappingSlot).
 	CanEditText bool `json:"canEditText"`
 
-	// CanUpdateText allows Repository.UpdateText — overwriting a text's
-	// content directly, bypassing the voting workflow entirely. Kept
-	// separate from the others because it's a strictly more powerful,
-	// vote-bypassing action than any of them.
-	CanUpdateText bool `json:"canUpdateText"`
-
 	// CanSubscribe allows following a text (Repository.Subscribe).
 	//
 	// Unlike the others this gates no change to any text: a subscription
@@ -104,17 +98,17 @@ type PermBit uint16
 // canEditSelection merged into CanEditText, dropping one from an iota block
 // would have shifted every bit above it down by one — and a token already
 // issued would then have decoded as a different set of rights entirely.
-// Freezing the positions keeps every mask ever signed readable; 1 << 4 is
-// simply retired. Of the sixteen PermBit now offers, six are in use, one is
-// retired, and nine are free.
+// Freezing the positions keeps every mask ever signed readable; 1 << 4 and
+// 1 << 5 are simply retired, never reassigned. Of the sixteen PermBit now
+// offers, five are in use, two are retired, and nine are free.
 const (
 	PermVote       PermBit = 1 << 0
 	PermCreateText PermBit = 1 << 1
 	PermCloseText  PermBit = 1 << 2
-	PermEditText   PermBit = 1 << 3
+	PermEditText PermBit = 1 << 3
 	// 1 << 4 was PermEditSelection, merged into PermEditText above.
-	PermUpdateText PermBit = 1 << 5
-	PermSubscribe  PermBit = 1 << 6
+	// 1 << 5 was PermUpdateText, removed with the route it guarded.
+	PermSubscribe PermBit = 1 << 6
 )
 
 // Bits packs p into a mask, one bit per permission — see PermBit.
@@ -132,9 +126,6 @@ func (p Permissions) Bits() PermBit {
 	if p.CanEditText {
 		b |= PermEditText
 	}
-	if p.CanUpdateText {
-		b |= PermUpdateText
-	}
 	if p.CanSubscribe {
 		b |= PermSubscribe
 	}
@@ -148,7 +139,6 @@ func PermissionsFromBits(b PermBit) Permissions {
 		CanCreateText:    b&PermCreateText != 0,
 		CanCloseText:     b&PermCloseText != 0,
 		CanEditText:      b&PermEditText != 0,
-		CanUpdateText:    b&PermUpdateText != 0,
 		CanSubscribe:     b&PermSubscribe != 0,
 	}
 }
@@ -164,7 +154,6 @@ const (
 	ActionCreateText    Action = "createText"
 	ActionCloseText     Action = "closeText"
 	ActionEditText      Action = "editText"
-	ActionUpdateText    Action = "updateText"
 	ActionSubscribe     Action = "subscribe"
 )
 
@@ -192,8 +181,6 @@ func (u *User) Can(action Action) bool {
 		return u.Permissions.CanCloseText
 	case ActionEditText:
 		return u.Permissions.CanEditText
-	case ActionUpdateText:
-		return u.Permissions.CanUpdateText
 	case ActionSubscribe:
 		return u.Permissions.CanSubscribe
 	default:
@@ -215,8 +202,6 @@ func (b PermBit) Allows(action Action) bool {
 		return b&PermCloseText != 0
 	case ActionEditText:
 		return b&PermEditText != 0
-	case ActionUpdateText:
-		return b&PermUpdateText != 0
 	case ActionSubscribe:
 		return b&PermSubscribe != 0
 	default:

@@ -309,30 +309,6 @@ func (r *Repository) RecentTexts(limit, offset int) ([]*Text, error) {
 	return texts, nil
 }
 
-// UpdateText overwrites a text's title and content directly, addressed only
-// by its ID. Unlike ProposeEdit/CastVote/CloseRound, it never touches slots,
-// fragments, or the current round — it's a plain, immediate write for
-// editing a text outside of the voting workflow entirely, whether or not a
-// round happens to be open on it.
-func (r *Repository) UpdateText(id, title, content string) (*Text, error) {
-	text, err := r.Text(id)
-	if err != nil {
-		return nil, err
-	}
-
-	text.Title = title
-	text.Content = content
-
-	payload, err := json.Marshal(text)
-	if err != nil {
-		return nil, err
-	}
-	if err := r.store.Put(textKey(id), payload); err != nil {
-		return nil, err
-	}
-	return text, nil
-}
-
 // Round fetches a round by ID.
 func (r *Repository) Round(id string) (*Round, error) {
 	value, found, err := r.store.Get(roundKey(id))

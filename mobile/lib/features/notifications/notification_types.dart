@@ -15,10 +15,6 @@ class NotificationTypes {
   /// round open, so the useful destination is the vote page.
   static const editProposed = 'text.edit-proposed';
 
-  /// A text was rewritten outright through PUT /api/texts/{id}. Nothing to
-  /// vote on, so this leads to the text itself.
-  static const updated = 'text.updated';
-
   /// A round was closed and the text forked into its next version. The id
   /// carried is the fork's, and no round is open on it — so this leads to
   /// the text, never to the vote page.

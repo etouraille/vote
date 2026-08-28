@@ -156,18 +156,6 @@ func (c *Client) TextWithSlots(ctx context.Context, id string) (*queel.TextWithS
 	return &result, nil
 }
 
-// UpdateText overwrites a text's title/content directly, bypassing the
-// voting workflow entirely — requires rbac.ActionUpdateText if the server
-// was started with a JWT secret.
-func (c *Client) UpdateText(ctx context.Context, id, title, content string) (*queel.Text, error) {
-	var text queel.Text
-	body := map[string]string{"title": title, "content": content}
-	if err := c.do(ctx, http.MethodPut, "/texts/"+id, body, &text); err != nil {
-		return nil, err
-	}
-	return &text, nil
-}
-
 // ProposeEdit selects a range [start,end) of the text's current content and
 // proposes replacing it with content.
 func (c *Client) ProposeEdit(ctx context.Context, textID string, start, end int, content, authorID string) (*queel.Fragment, error) {

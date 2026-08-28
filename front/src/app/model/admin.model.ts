@@ -3,7 +3,6 @@ export interface Permissions {
   canCreateText: boolean;
   canCloseText: boolean;
   canEditText: boolean;
-  canUpdateText: boolean;
   // Following a text. Not a right over the text itself, but it gates what
   // the app offers: only followed texts show their vote/edit/close actions,
   // and only followers are notified when one changes.
@@ -34,18 +33,21 @@ export interface MeResponse {
 //   - "Sélectionner une plage" and "Proposer un contenu" were two boxes for
 //     one act — they have since become the single canEditText.
 //   - "Modifier un texte directement" read as *the* editing right while
-//     being the one no screen uses: it gates PUT /api/texts/{id}, the back
-//     door that overwrites a text without a vote.
+//     being the one no screen used. It, its permission and the route it
+//     guarded have all since been removed.
 //
 // And "Créer un texte" understated itself: deleting reuses that same
 // permission (see the api's deleteTextHandler), so granting it hands over
 // removal too.
-export const PERMISSION_LABELS: Record<keyof Permissions, string> = {
+// Partial rather than Record, so the form can offer a subset of what an
+// account holds without the type insisting on a label for every field.
+// Nothing is hidden today — the one permission that was, canUpdateText, has
+// since been removed outright along with the route it guarded.
+export const PERMISSION_LABELS: Partial<Record<keyof Permissions, string>> = {
   canVote: 'Voter',
   canCreateText: 'Créer et supprimer un texte',
   canCloseText: 'Clore un round',
   canEditText: 'Modifier un texte',
-  canUpdateText: 'Écraser le texte sans vote',
   canSubscribe: "S'abonner à un texte",
 };
 

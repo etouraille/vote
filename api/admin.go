@@ -16,7 +16,6 @@ type permissionsRequest struct {
 	CanCreateText    bool `json:"canCreateText"`
 	CanCloseText     bool `json:"canCloseText"`
 	CanEditText      bool `json:"canEditText"`
-	CanUpdateText    bool `json:"canUpdateText"`
 	CanSubscribe     bool `json:"canSubscribe"`
 }
 
@@ -104,7 +103,6 @@ func assignPermissionsHandler(store *Store, rbacStore *rbac.Store) http.HandlerF
 			CanCreateText:    req.CanCreateText,
 			CanCloseText:     req.CanCloseText,
 			CanEditText:      req.CanEditText,
-			CanUpdateText:    req.CanUpdateText,
 			CanSubscribe:     req.CanSubscribe,
 		}
 

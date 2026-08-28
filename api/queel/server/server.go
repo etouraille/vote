@@ -36,7 +36,6 @@ func NewHandler(repo *queel.Repository, jwtSecret []byte) http.Handler {
 	mux.HandleFunc("GET /texts", recentTextsHandler(repo))
 	mux.HandleFunc("GET /texts/{id}", getTextHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/with-slots", textWithSlotsHandler(repo))
-	mux.HandleFunc("PUT /texts/{id}", updateTextHandler(repo, jwtSecret))
 	mux.HandleFunc("DELETE /texts/{id}", deleteTextHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/propose-edit", proposeEditHandler(repo, jwtSecret))
 	mux.HandleFunc("GET /texts/{id}/round", currentRoundHandler(repo))
@@ -287,36 +286,6 @@ func textWithSlotsHandler(repo *queel.Repository) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
-	}
-}
-
-type updateTextRequest struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
-}
-
-// updateTextHandler overwrites a text's title/content directly, bypassing
-// the voting workflow entirely — see rbac.ActionUpdateText.
-func updateTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !checkAction(w, r, jwtSecret, rbac.ActionUpdateText) {
-			return
-		}
-		if !checkSubscription(w, repo, r.PathValue("id"), r.URL.Query().Get("userId")) {
-			return
-		}
-
-		var req updateTextRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
-			return
-		}
-		text, err := repo.UpdateText(r.PathValue("id"), req.Title, req.Content)
-		if err != nil {
-			writeRepositoryError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, text)
 	}
 }
 

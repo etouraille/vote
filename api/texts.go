@@ -248,52 +248,6 @@ func fragmentsForSlotHandler(repo *queel.Repository) http.HandlerFunc {
 	}
 }
 
-// updateTextHandler overwrites an existing text's title/content directly,
-// addressed only by its ID in the URL — entirely separate from the
-// round/slot/vote workflow, so it works the same whether or not a voting
-// round happens to be open on that text.
-func updateTextHandler(repo *queel.Repository, notifier *textNotifier) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !requirePermission(w, r, rbac.ActionUpdateText) {
-			return
-		}
-
-		id := r.PathValue("id")
-		// Rewriting a text outright is the strongest form of editing, so
-		// the rule that covers proposing a change has to cover it too —
-		// otherwise the route literally named "update text" is the way
-		// around it.
-		if !requireSubscription(w, r, repo, id) {
-			return
-		}
-
-		title, content, ok := decodeTextPayload(w, r)
-		if !ok {
-			return
-		}
-
-		text, err := repo.UpdateText(id, title, content)
-		if err != nil {
-			if errors.Is(err, queel.ErrNotFound) {
-				writeError(w, http.StatusNotFound, "texte introuvable")
-				return
-			}
-			writeError(w, http.StatusInternalServerError, "erreur serveur")
-			return
-		}
-
-		// After the write succeeded, and never gating the response on it:
-		// notifying is a consequence of the edit, not part of it.
-		var actorID string
-		if claims, ok := claimsFromContext(r); ok {
-			actorID = claims.Subject
-		}
-		notifier.TextUpdated(text, actorID)
-
-		writeJSON(w, http.StatusOK, textResponse{ID: text.ID})
-	}
-}
-
 // deleteTextHandler removes a single text outright — see
 // queel.Repository.DeleteText for exactly what that cascades to (its
 // rounds/fragments/votes, but not any text it was later forked into).

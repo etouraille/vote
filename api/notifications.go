@@ -12,8 +12,8 @@ import (
 )
 
 // notifyTimeout bounds a fan-out. It runs detached from the request that
-// triggered it (see textNotifier.TextUpdated), so nothing else would ever
-// stop it.
+// triggered it (see textNotifier.notify), so nothing else would ever stop
+// it.
 const notifyTimeout = 30 * time.Second
 
 // textNotifier turns "this text changed" into "these people should hear
@@ -33,30 +33,10 @@ func newTextNotifier(repo *queel.Repository, store *Store, dispatcher *notify.Di
 	return &textNotifier{repo: repo, store: store, dispatcher: dispatcher}
 }
 
-// TextUpdated notifies the followers of a text rewritten outright, through
-// PUT /api/texts/{id}.
-//
-// Rarely the one that fires in practice: the Angular editor never calls
-// that route — it proposes edits, see EditProposed below. Kept because the
-// route exists and a client that does use it should notify all the same.
-func (n *textNotifier) TextUpdated(text *queel.Text, actorID string) {
-	n.notify(text.ID, actorID, func(actor string) notify.Notification {
-		body := fmt.Sprintf("« %s » vient d'être modifié.", text.Title)
-		if actor != "" {
-			body = fmt.Sprintf("%s a modifié « %s ».", actor, text.Title)
-		}
-		return notify.Notification{
-			Title: "Texte modifié",
-			Body:  body,
-			Data:  eventData("text.updated", text.ID, actor),
-		}
-	})
-}
-
 // EditProposed notifies the followers of a text somebody has proposed a
-// change to — what "modifying a text" actually means in this app: carving
-// out a slot and submitting a competing wording for it, which is what the
-// editor does and what followers are waiting to vote on.
+// change to — which is what modifying a text means here, now that the route
+// overwriting one outright is gone: carving out a zone and submitting a
+// competing wording for it, for the followers to vote on.
 func (n *textNotifier) EditProposed(textID, title, actorID string) {
 	n.notify(textID, actorID, func(actor string) notify.Notification {
 		body := fmt.Sprintf("Une modification vient d'être proposée sur « %s ».", title)

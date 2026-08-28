@@ -12,7 +12,7 @@ func TestRootUserCanDoEverything(t *testing.T) {
 	user := &User{Root: true}
 	for _, action := range []Action{
 		ActionVote, ActionCreateText, ActionCloseText,
-		ActionEditText, ActionUpdateText, ActionSubscribe,
+		ActionEditText, ActionSubscribe,
 	} {
 		if !user.Can(action) {
 			t.Errorf("root user should be able to %s", action)
@@ -258,10 +258,10 @@ func TestPermissionsReadsLegacyEditingKeys(t *testing.T) {
 	// The other fields must survive the custom unmarshaller — the usual
 	// trap when one is written by hand.
 	var perms Permissions
-	if err := json.Unmarshal([]byte(`{"canVote":true,"canSubscribe":true,"canUpdateText":true}`), &perms); err != nil {
+	if err := json.Unmarshal([]byte(`{"canVote":true,"canSubscribe":true,"canCloseText":true}`), &perms); err != nil {
 		t.Fatal(err)
 	}
-	if !perms.CanVote || !perms.CanSubscribe || !perms.CanUpdateText {
+	if !perms.CanVote || !perms.CanSubscribe || !perms.CanCloseText {
 		t.Fatalf("unrelated fields lost: %+v", perms)
 	}
 }
@@ -279,7 +279,6 @@ func TestPermissionBitsAreFrozen(t *testing.T) {
 		{PermCreateText, 2},
 		{PermCloseText, 4},
 		{PermEditText, 8},
-		{PermUpdateText, 32},
 		{PermSubscribe, 64},
 	} {
 		if tc.bit != tc.want {
@@ -306,7 +305,7 @@ func TestPermBitReadsATokenSignedAsAUint8(t *testing.T) {
 	if !perms.CanVote || !perms.CanEditText || !perms.CanSubscribe {
 		t.Fatalf("permissions = %+v, want vote + editText + subscribe", perms)
 	}
-	if perms.CanCreateText || perms.CanCloseText || perms.CanUpdateText {
+	if perms.CanCreateText || perms.CanCloseText {
 		t.Fatalf("permissions = %+v, want nothing beyond those three", perms)
 	}
 

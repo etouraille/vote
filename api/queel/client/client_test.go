@@ -117,32 +117,6 @@ func TestClientFullRoundTrip(t *testing.T) {
 	}
 }
 
-func TestClientUpdateText(t *testing.T) {
-	ctx := context.Background()
-	c := newTestClient(t)
-
-	text, err := c.CreateText(ctx, "Draft", "v1", "creator")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	updated, err := c.UpdateText(ctx, text.ID, "Final", "v2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Title != "Final" || updated.Content != "v2" {
-		t.Fatalf("UpdateText = %+v, want title %q content %q", updated, "Final", "v2")
-	}
-
-	fetched, err := c.Text(ctx, text.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fetched.Title != "Final" || fetched.Content != "v2" {
-		t.Fatalf("Text after update = %+v, want title %q content %q", fetched, "Final", "v2")
-	}
-}
-
 func TestClientTextWithSlots(t *testing.T) {
 	ctx := context.Background()
 	c := newTestClient(t)

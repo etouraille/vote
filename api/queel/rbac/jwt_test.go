@@ -48,7 +48,7 @@ func TestVerifyTokenRejectsExpired(t *testing.T) {
 
 func TestAllows(t *testing.T) {
 	root := Claims{Root: true}
-	if !root.Allows(ActionUpdateText) {
+	if !root.Allows(ActionEditText) {
 		t.Fatal("root claims should allow every action")
 	}
 

@@ -46,10 +46,6 @@ export class TextService {
     return this.http.get<HistoryVersion[]>(`${API_BASE_URL}/api/texts/${id}/history`);
   }
 
-  update(id: string, title: string, content: string): Observable<CreateTextResponse> {
-    return this.http.put<CreateTextResponse>(`${API_BASE_URL}/api/texts/${id}`, { title, content });
-  }
-
   search(query: string): Observable<SearchResult[]> {
     return this.http.get<SearchResult[]>(`${API_BASE_URL}/api/texts/search`, {
       params: { q: query },
