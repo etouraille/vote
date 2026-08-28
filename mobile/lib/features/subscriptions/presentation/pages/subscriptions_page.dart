@@ -21,6 +21,10 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   List<SubscribedText>? _texts;
   String? _error;
 
+  /// Which one is being left, so its row can say so and not be tapped
+  /// twice. One at a time is enough: leaving is a deliberate act.
+  String? _leaving;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +40,45 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     } catch (_) {
       if (mounted) setState(() => _error = 'Chargement impossible.');
     }
+  }
+
+  /// Leaves a text, and drops it from the list.
+  ///
+  /// Removed rather than greyed out: this list is what you follow, and a
+  /// text you have just left does not belong on it. Confirmed first — the
+  /// row is small and the tap is next to the one that opens the text.
+  Future<void> _unsubscribe(SubscribedText text) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Ne plus suivre « ${text.title} » ?'),
+        content: const Text(
+          'Vous ne serez plus prévenu de ses modifications. Vous pourrez le suivre à nouveau depuis sa page.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Ne plus suivre')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _leaving = text.id);
+    try {
+      await SubscriptionApi.unsubscribe(text.id);
+      if (mounted) setState(() => _texts = _texts?.where((item) => item.id != text.id).toList());
+    } on ApiException catch (e) {
+      _showMessage(e.message);
+    } catch (_) {
+      _showMessage('Désabonnement impossible.');
+    } finally {
+      if (mounted) setState(() => _leaving = null);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _openText(SubscribedText text) {
@@ -74,11 +117,19 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               return ListTile(
                 title: Text(text.title),
                 onTap: () => _openText(text),
-                // The row still opens the text; voting is its own target so
-                // that reaching the round never means opening the text first.
-                trailing: TextButton(
-                  onPressed: () => _openVote(text),
-                  child: const Text('Voter'),
+                // The row still opens the text; the two buttons are their
+                // own targets so that reaching the round, or leaving,
+                // never means opening the text first.
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(onPressed: () => _openVote(text), child: const Text('Voter')),
+                    IconButton(
+                      onPressed: _leaving == text.id ? null : () => _unsubscribe(text),
+                      icon: const Icon(Icons.notifications_off_outlined),
+                      tooltip: 'Ne plus suivre',
+                    ),
+                  ],
                 ),
               );
             },

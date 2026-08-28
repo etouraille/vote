@@ -14,7 +14,13 @@ class Endpoints {
 
   static String text(String id) => '/api/texts/$id';
 
-  /// Follow a text — the caller is taken from the bearer token, so nothing
+  /// The most recent articles, newest first, each with its tags and
+  /// whether the caller follows it. Superseded versions are left out by
+  /// the api, so this lists every article at its latest round.
+  static String recentTexts(int limit, int offset) => '/api/texts?limit=$limit&offset=$offset';
+
+  /// Follow a text, or stop — the same path, POST to join and DELETE to
+  /// leave. The caller is taken from the bearer token, so nothing
   /// identifies the user in the path or body.
   static String subscribe(String id) => '/api/texts/$id/subscribe';
 

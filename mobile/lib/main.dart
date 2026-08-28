@@ -8,7 +8,7 @@ import 'app/config/env.dart';
 import 'core/storage/secure_storage.dart';
 import 'features/notifications/notification_service.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
-import 'features/search/presentation/pages/search_page.dart';
+import 'features/articles/presentation/pages/articles_page.dart';
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +42,7 @@ Future<void> main() async {
 
   await minSplashDuration;
 
-  runApp(QueelApp(initialPage: token != null ? const SearchPage() : const LoginPage()));
+  runApp(QueelApp(initialPage: token != null ? const ArticlesPage() : const LoginPage()));
   FlutterNativeSplash.remove();
 
   // A notification tapped while the app wasn't running was read above, in

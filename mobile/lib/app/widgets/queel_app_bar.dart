@@ -53,6 +53,7 @@ class QueelAppBar extends StatelessWidget implements PreferredSizeWidget {
           // menu is opened, so reading the count here is enough to have it
           // current every time it's shown.
           itemBuilder: (_) => [
+            const PopupMenuItem(value: AppRouter.articles, child: Text('Articles')),
             PopupMenuItem(
               value: AppRouter.notifications,
               // A second way in, alongside the bell — the bell carries the
@@ -61,6 +62,10 @@ class QueelAppBar extends StatelessWidget implements PreferredSizeWidget {
               child: Text(_notificationsLabel()),
             ),
             const PopupMenuItem(value: AppRouter.subscriptions, child: Text('Mes abonnements')),
+            // Search was the landing screen before the article list took
+            // its place; without an entry here it would have no way in at
+            // all.
+            const PopupMenuItem(value: AppRouter.search, child: Text('Rechercher')),
             // Last, and set apart: it's the one entry that undoes the
             // session rather than moving around inside it.
             const PopupMenuDivider(),

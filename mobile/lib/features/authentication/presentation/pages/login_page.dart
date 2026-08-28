@@ -110,7 +110,7 @@ class _LoginPageState extends State<LoginPage> {
     // notifications must not hold up the navigation.
     unawaited(NotificationService.registerDevice());
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(AppRouter.search);
+    Navigator.of(context).pushReplacementNamed(AppRouter.articles);
 
     // After the replacement, so the text a notification pointed at is
     // pushed on top of the search page and the back button leads somewhere.

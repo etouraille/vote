@@ -12,6 +12,17 @@ class SubscriptionApi {
     await ApiClient.post(Endpoints.subscribe(textId), {});
   }
 
+  /// Stops following [textId].
+  ///
+  /// Ungated server-side, unlike subscribing: taking back your own
+  /// attention needs no permission, and someone whose right to subscribe
+  /// was revoked must still be able to leave what they had joined.
+  ///
+  /// Idempotent — leaving a text you no longer follow succeeds.
+  static Future<void> unsubscribe(String textId) async {
+    await ApiClient.delete(Endpoints.subscribe(textId), {});
+  }
+
   /// Whether the caller may follow a text at all — root implies it,
   /// otherwise it's the canSubscribe permission. Same shape as
   /// VoteApi.canVote, and for the same reason: the button stays hidden
