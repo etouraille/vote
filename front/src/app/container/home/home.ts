@@ -67,9 +67,11 @@ export class HomePage implements OnInit {
   // A single active label rather than a set: narrowing by two at once is a
   // question nobody asked, and it would need the api to answer it.
   readonly tags = signal<TagCount[]>([]);
-  // A set rather than one label: crossing several is how a list narrows,
-  // and the api answers with the texts carrying them all.
-  readonly activeTags = signal<string[]>([]);
+  // The labels being crossed, as one raw line. Sent to the api unsplit:
+  // reading a line into labels is one rule and it lives there — splitting
+  // it here would let "loi vote" mean two labels on this screen and one
+  // everywhere else.
+  readonly tagLine = signal('');
 
   // Null when no search is active — distinct from an empty array, which
   // means "searched, found nothing" and must show that rather than
@@ -218,23 +220,78 @@ export class HomePage implements OnInit {
     });
   }
 
-  // Selecting the active label clears it, so one control both applies and
-  // undoes the filter.
-  // Adds a label to the crossing or takes it out — one control does both,
-  // so there is nothing separate to find in order to undo.
-  filterByTag(tag: string): void {
-    this.activeTags.update((tags) =>
-      tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag],
-    );
+  // One value carrying the whole line, which the api reads into labels.
+  private queryTags(): string[] {
+    const line = this.tagLine().trim();
+    return line === '' ? [] : [line];
+  }
+
+  clearTags(): void {
+    if (this.tagLine() === '') return;
+    this.tagLine.set('');
+    this.applyTagFilter();
+  }
+
+  applyTagFilter(): void {
     this.selectedId.set(null);
     this.loadRecentTexts();
   }
 
-  clearTags(): void {
-    if (this.activeTags().length === 0) return;
-    this.activeTags.set([]);
-    this.selectedId.set(null);
-    this.loadRecentTexts();
+  // Accents folded away, so typing "ecolo" finds "écologie". Labels keep
+  // theirs — they are what gets stored and shown — and only the comparison
+  // drops them: nobody reaches for the accented key while filtering, and a
+  // completion that demands it never fires.
+  private static fold(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '');
+  }
+
+  // Splits the line the way the eye does, for the completion only. Never
+  // for the query: that goes whole to the api, so this approximation
+  // cannot make the filter disagree with the server about what was asked.
+  private static words(line: string): string[] {
+    return line.split(/[#,;\s]+/).filter((word) => word !== '');
+  }
+
+  private static onSeparator(line: string): boolean {
+    return line === '' || /[#,;\s]$/.test(line);
+  }
+
+  // Labels matching what is being typed, minus those already on the line —
+  // suggesting one twice offers a narrowing that would change nothing.
+  //
+  // Matched anywhere rather than only at the start, since someone after
+  // "loi-de-finances" is as likely to type "finances"; those beginning
+  // with what was typed come first, which is what a reader expects on top.
+  readonly tagSuggestions = computed(() => {
+    const line = this.tagLine();
+    const words = HomePage.words(line.toLowerCase());
+    const onSeparator = HomePage.onSeparator(line);
+    const current = HomePage.fold(onSeparator ? '' : (words.at(-1) ?? ''));
+    const already = new Set(words.slice(0, words.length - (onSeparator ? 0 : 1)));
+
+    return this.tags()
+      .filter((tag) => !already.has(tag.tag))
+      .filter((tag) => current === '' || HomePage.fold(tag.tag).includes(current))
+      .sort((a, b) => {
+        const aStarts = HomePage.fold(a.tag).startsWith(current);
+        const bStarts = HomePage.fold(b.tag).startsWith(current);
+        return aStarts === bStarts ? 0 : aStarts ? -1 : 1;
+      })
+      .slice(0, 8);
+  });
+
+  // Replaces the word being typed with the label chosen, leaving a space so
+  // the next one can follow without reaching for the mouse again.
+  completeTag(tag: string): void {
+    const line = this.tagLine();
+    const words = HomePage.words(line);
+    if (!HomePage.onSeparator(line)) words.pop();
+
+    this.tagLine.set([...words, tag].join(' ') + ' ');
+    this.applyTagFilter();
   }
 
   private toThreadItem(text: RecentText): ThreadItem {
@@ -270,7 +327,7 @@ export class HomePage implements OnInit {
   private loadRecentTexts(): void {
     this.hasMoreRecentTexts.set(true);
     this.recentTexts.set([]);
-    this.textService.listRecent(RECENT_TEXTS_COUNT, 0, this.activeTags()).subscribe((texts) => {
+    this.textService.listRecent(RECENT_TEXTS_COUNT, 0, this.queryTags()).subscribe((texts) => {
       const items = texts.map((text) => this.toThreadItem(text));
       this.recentTexts.set(items);
       this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);
@@ -287,7 +344,7 @@ export class HomePage implements OnInit {
 
     this.loadingMoreRecentTexts.set(true);
     const offset = this.recentTexts().length;
-    this.textService.listRecent(RECENT_TEXTS_COUNT, offset, this.activeTags()).subscribe({
+    this.textService.listRecent(RECENT_TEXTS_COUNT, offset, this.queryTags()).subscribe({
       next: (texts) => {
         this.loadingMoreRecentTexts.set(false);
         this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);

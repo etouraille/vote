@@ -264,32 +264,49 @@
         <p class="mt-2 text-xs text-red-600">{{ error }}</p>
       }
 
-      <!-- Above the thread it narrows, and only while there is a choice to
-           make: a single label on offer filters nothing. -->
+      <!-- Labels are reached by typing them, not by browsing a list of
+           every one that exists: the completion says what the list said,
+           without growing unreadable at the first few dozen. -->
       @if (tags().length > 0 && !searchResults()) {
-        <div class="mt-2 flex flex-wrap gap-1">
-          @if (activeTags().length > 0) {
+        <div class="relative mt-2">
+          <label class="sr-only" for="tag-filter">Filtrer par étiquettes</label>
+          <input
+            id="tag-filter"
+            type="text"
+            [ngModel]="tagLine()"
+            (ngModelChange)="tagLine.set($event)"
+            (keyup.enter)="applyTagFilter()"
+            name="tagFilter"
+            placeholder="Filtrer par étiquettes : loi #vote"
+            class="block w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
+          />
+
+          @if (tagSuggestions().length > 0) {
+            <ul
+              class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+            >
+              @for (tag of tagSuggestions(); track tag.tag) {
+                <li>
+                  <button
+                    type="button"
+                    (click)="completeTag(tag.tag)"
+                    class="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-slate-50"
+                  >
+                    <span class="text-slate-700">#{{ tag.tag }}</span>
+                    <span class="text-slate-400">{{ tag.count }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (tagLine() !== '') {
             <button
               type="button"
               (click)="clearTags()"
-              class="rounded px-1.5 py-0.5 text-xs text-slate-500 underline hover:text-slate-800"
+              class="mt-1 text-xs text-slate-500 underline hover:text-slate-800"
             >
               Tout enlever
-            </button>
-          }
-          @for (tag of tags(); track tag.tag) {
-            <button
-              type="button"
-              (click)="filterByTag(tag.tag)"
-              class="rounded px-1.5 py-0.5 text-xs"
-              [class.bg-slate-200]="!activeTags().includes(tag.tag)"
-              [class.text-slate-700]="!activeTags().includes(tag.tag)"
-              [class.bg-slate-900]="activeTags().includes(tag.tag)"
-              [class.text-white]="activeTags().includes(tag.tag)"
-              [attr.aria-pressed]="activeTags().includes(tag.tag)"
-            >
-              #{{ tag.tag }}
-              <span class="opacity-60">{{ tag.count }}</span>
             </button>
           }
         </div>
@@ -353,8 +370,8 @@
         <p class="p-4 text-center text-xs text-slate-400">
           @if (searchResults()) {
             Aucun résultat.
-          } @else if (activeTags().length > 0) {
-            Aucun texte ne porte à la fois #{{ activeTags().join(' #') }}.
+          } @else if (tagLine().trim() !== '') {
+            Aucun texte ne porte à la fois « {{ tagLine().trim() }} ».
           } @else {
             Aucun texte pour le moment.
           }
