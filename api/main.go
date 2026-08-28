@@ -234,6 +234,7 @@ func main() {
 	mux.HandleFunc("POST /api/texts/{id}/close-round", closeRoundHandler(textRepo, searchIndex, notifier))
 	mux.HandleFunc("POST /api/texts/{id}/schedule-close", scheduleCloseHandler(textRepo))
 	mux.HandleFunc("POST /api/texts/{id}/subscribe", subscribeHandler(textRepo))
+	mux.HandleFunc("DELETE /api/texts/{id}/subscribe", unsubscribeHandler(textRepo))
 	mux.HandleFunc("GET /api/me/subscriptions", subscriptionsHandler(textRepo))
 	mux.HandleFunc("POST /api/me/devices", registerDeviceHandler(store))
 	mux.HandleFunc("DELETE /api/me/devices", unregisterDeviceHandler(store))

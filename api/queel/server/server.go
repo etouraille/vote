@@ -44,6 +44,7 @@ func NewHandler(repo *queel.Repository, jwtSecret []byte) http.Handler {
 	mux.HandleFunc("POST /texts/{id}/close-round", closeRoundHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/schedule-close", scheduleCloseHandler(repo, jwtSecret))
 	mux.HandleFunc("POST /texts/{id}/subscribe", subscribeHandler(repo, jwtSecret))
+	mux.HandleFunc("DELETE /texts/{id}/subscribe", unsubscribeHandler(repo))
 	mux.HandleFunc("GET /users/{userId}/subscriptions", subscriptionsHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/slots/{slotId}/fragments", fragmentsHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/votes/{userId}", userVotesHandler(repo))
@@ -497,6 +498,26 @@ func subscribeHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc
 			return
 		}
 		writeJSON(w, http.StatusOK, subscribeResponse{Subscribed: true})
+	}
+}
+
+// unsubscribeHandler stops a user following a text — mirrors the api's own
+// route, and is ungated there for the same reason: taking back your own
+// attention needs no right, and a revoked canSubscribe must not trap
+// someone in the texts they had already joined.
+func unsubscribeHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req subscribeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if err := repo.Unsubscribe(req.UserID, r.PathValue("id")); err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, subscribeResponse{Subscribed: false})
 	}
 }
 

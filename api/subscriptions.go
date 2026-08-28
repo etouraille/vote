@@ -47,6 +47,29 @@ func subscribeHandler(repo *queel.Repository) http.HandlerFunc {
 	}
 }
 
+// unsubscribeHandler stops the caller following a text.
+//
+// Ungated, unlike subscribing: taking back your own attention is not an
+// action anyone should need a right for, and someone whose canSubscribe
+// was revoked must still be able to leave the texts they had joined —
+// otherwise a withdrawn permission would trap them in their subscriptions
+// rather than stop them making new ones.
+func unsubscribeHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
+
+		if err := repo.Unsubscribe(claims.Subject, r.PathValue("id")); err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+		writeJSON(w, http.StatusOK, subscribeResponse{Subscribed: false})
+	}
+}
+
 // subscribedText is deliberately narrower than queel.Text: this feeds a
 // list of titles (see the mobile app's "Mes abonnements"), and carrying
 // every followed text's full content just to render its title would grow

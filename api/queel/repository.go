@@ -479,6 +479,22 @@ func (r *Repository) Subscribe(userID, textID string) (*Subscription, error) {
 	return sub, nil
 }
 
+// Unsubscribe stops userID following textID, removing both the record and
+// its per-user index entry — leaving either behind would make the two
+// listings disagree about the same subscription.
+//
+// Idempotent, and deliberately so: unfollowing something you no longer
+// follow is the outcome the caller wanted, not an error to handle. It does
+// not check the text still exists either, for the same reason — a
+// subscription outliving its text is exactly the one you most want to be
+// able to drop.
+func (r *Repository) Unsubscribe(userID, textID string) error {
+	return r.store.WriteBatch([]WriteOp{
+		{Key: subscriptionKey(textID, userID), Tombstone: true},
+		{Key: subscriptionIndexKey(userID, textID), Tombstone: true},
+	})
+}
+
 // IsSubscribed reports whether userID currently follows textID.
 func (r *Repository) IsSubscribed(userID, textID string) (bool, error) {
 	_, found, err := r.store.Get(subscriptionKey(textID, userID))

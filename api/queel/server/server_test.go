@@ -612,3 +612,57 @@ func TestProposeEditIsOneRightWhicheverZone(t *testing.T) {
 		t.Fatalf("without the editing right: expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestUnsubscribeHandlerIsIdempotentAndUngated covers the two properties
+// that make leaving safe: unfollowing what you no longer follow is the
+// outcome asked for rather than an error, and it needs no permission —
+// someone whose right to subscribe was revoked must still be able to leave
+// the texts they had joined.
+func TestUnsubscribeHandlerIsIdempotentAndUngated(t *testing.T) {
+	repo := newTestRepo(t)
+	// A secret, so authorization is on: proving "ungated" needs a handler
+	// that would otherwise refuse.
+	handler := NewHandler(repo, testSecret)
+
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "author-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Subscribe("alice", text.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	leave := func() int {
+		body := strings.NewReader(`{"userId":"alice"}`)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/texts/"+text.ID+"/subscribe", body))
+		return rec.Code
+	}
+
+	// No Authorization header at all, and it still goes through.
+	if code := leave(); code != http.StatusOK {
+		t.Fatalf("expected 200 without any token, got %d", code)
+	}
+	subscribed, err := repo.IsSubscribed("alice", text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subscribed {
+		t.Fatal("alice must no longer follow the text")
+	}
+
+	// Again, on a subscription that is already gone.
+	if code := leave(); code != http.StatusOK {
+		t.Fatalf("expected 200 on a second leave, got %d", code)
+	}
+
+	// And the per-user listing agrees, rather than keeping an index entry
+	// pointing at a subscription the other listing no longer has.
+	texts, err := repo.SubscriptionsForUser("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 0 {
+		t.Fatalf("SubscriptionsForUser = %v, want none", texts)
+	}
+}
