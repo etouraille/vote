@@ -21,6 +21,13 @@ func TestParseTags(t *testing.T) {
 		{"separator only", "loi#vote", []string{"loi", "vote"}},
 		{"spaces around", "  #  loi  #  vote  ", []string{"loi", "vote"}},
 
+		// The hash is optional, not load-bearing: forgetting it used to
+		// make the whole line one label reading "loi vote", which nothing
+		// would ever match.
+		{"no hash at all", "loi vote", []string{"loi", "vote"}},
+		{"commas", "loi, vote", []string{"loi", "vote"}},
+		{"mixed", "#loi, vote écologie", []string{"loi", "vote", "écologie"}},
+
 		{"empty line", "", nil},
 		{"hashes only", "###", nil},
 
@@ -208,5 +215,26 @@ func TestTextsByTagsIntersects(t *testing.T) {
 		t.Fatal(err)
 	} else if len(none) != 0 {
 		t.Fatalf("an unused label matched %v, want none", none)
+	}
+}
+
+// TestParseTagsIsTheOneRuleForQueries covers the property the tag filter
+// leans on: a query parameter can carry an exact label or a whole line as
+// somebody typed it, and both read the same. Without it, a reader typing
+// "loi vote" into the mobile filter would ask for a single label reading
+// "loi vote" and find nothing, while the same words as two chips would
+// work — the same input giving two answers depending on how it was
+// entered.
+func TestParseTagsIsTheOneRuleForQueries(t *testing.T) {
+	typed := ParseTags("#loi #vote")
+	picked := append(ParseTags("loi"), ParseTags("vote")...)
+
+	if len(typed) != len(picked) {
+		t.Fatalf("typed %v, picked %v — a line and its labels must read alike", typed, picked)
+	}
+	for i := range typed {
+		if typed[i] != picked[i] {
+			t.Fatalf("typed %v, picked %v", typed, picked)
+		}
 	}
 }

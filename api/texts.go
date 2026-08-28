@@ -134,11 +134,19 @@ type recentTextResult struct {
 // queryTags reads the repeatable ?tag= parameter into the set a listing is
 // narrowed by.
 func queryTags(r *http.Request) []string {
-	raw := r.URL.Query()["tag"]
-	tags := make([]string, 0, len(raw))
-	for _, tag := range raw {
-		if tag = strings.ToLower(strings.TrimSpace(tag)); tag != "" {
-			tags = append(tags, tag)
+	tags := make([]string, 0, 4)
+	seen := make(map[string]bool, 4)
+
+	// Each value goes through ParseTags rather than being trimmed here, so
+	// one parameter can carry an exact label or a whole line as somebody
+	// typed it — "?tag=loi&tag=vote" and "?tag=%23loi %23vote" ask the same
+	// thing. One rule for reading labels, wherever they come from.
+	for _, raw := range r.URL.Query()["tag"] {
+		for _, tag := range queel.ParseTags(raw) {
+			if !seen[tag] {
+				seen[tag] = true
+				tags = append(tags, tag)
+			}
 		}
 	}
 	return tags

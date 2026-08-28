@@ -30,12 +30,19 @@ class _ArticlesPageState extends State<ArticlesPage> {
   List<Article>? _articles;
   String? _error;
 
-  /// The labels on offer, and the ones being crossed. A set rather than a
-  /// single value: the point of this filter is the intersection, and each
-  /// label added leaves fewer articles.
+  /// The labels in use, which the field completes on. Kept whole rather
+  /// than listed on screen: a filter that also prints every label available
+  /// says twice what completion already says once, and grows unreadable at
+  /// the first few dozen.
   List<TagCount> _tags = const [];
-  final _selected = <String>{};
   bool _filterOpen = false;
+
+  /// What is being crossed, as one raw line. Sent to the api unsplit:
+  /// reading a line into labels is one rule and it lives there — splitting
+  /// it here would let "loi vote" mean two labels on this screen and one
+  /// everywhere else.
+  final _typed = TextEditingController();
+  final _typedFocus = FocusNode();
 
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -59,34 +66,80 @@ class _ArticlesPageState extends State<ArticlesPage> {
     }
   }
 
-  /// Adds a label to the crossing, or takes it out — one control does both,
-  /// so there is nothing separate to find in order to undo.
-  void _toggleTag(String tag) {
+  void _clearTags() {
+    if (_typed.text.isEmpty) return;
     setState(() {
-      if (!_selected.remove(tag)) _selected.add(tag);
+      _typed.clear();
       _articles = null;
     });
     _load();
   }
 
-  void _clearTags() {
-    if (_selected.isEmpty) return;
-    setState(() {
-      _selected.clear();
-      _articles = null;
-    });
+  /// The line as one value the api reads into labels of its own.
+  List<String> _activeTags() => [if (_typed.text.trim().isNotEmpty) _typed.text.trim()];
+
+  void _applyFilter() {
+    setState(() => _articles = null);
     _load();
+  }
+
+  /// Splits the line the way the eye does, for the completion only — which
+  /// word is being typed, and which are already there. Never for the query:
+  /// that goes whole to the api, so this approximation cannot make the
+  /// filter disagree with the server about what was asked.
+  /// Whether the line is ready for a new word — empty, or closed by a
+  /// separator. Tells "the reader is still typing this label" apart from
+  /// "they have finished it".
+  static bool _endsOnSeparator(String line) =>
+      line.isEmpty || RegExp(r'[#,;\s]$').hasMatch(line);
+
+  static List<String> _words(String line) =>
+      line.split(RegExp(r'[#,;\s]+')).where((word) => word.isNotEmpty).toList();
+
+  /// Labels that match what is being typed, minus those already on the
+  /// line: suggesting a label a second time offers a narrowing that would
+  /// change nothing.
+  Iterable<String> _suggestions(String line) {
+    final words = _words(line.toLowerCase());
+    final current = _endsOnSeparator(line) ? '' : (words.isEmpty ? '' : words.last);
+    final already = words.take(words.length - (current.isEmpty ? 0 : 1)).toSet();
+
+    return _tags
+        .map((tag) => tag.tag)
+        .where((tag) => !already.contains(tag))
+        .where((tag) => current.isEmpty || (tag.startsWith(current) && tag != current))
+        .take(8);
+  }
+
+  int? _countFor(String tag) {
+    for (final known in _tags) {
+      if (known.tag == tag) return known.count;
+    }
+    return null;
+  }
+
+  /// Replaces the word being typed with the label chosen, and leaves a
+  /// space so the next one can follow without touching the keyboard.
+  void _completeWith(String tag) {
+    final words = _words(_typed.text);
+    if (!_endsOnSeparator(_typed.text) && words.isNotEmpty) words.removeLast();
+
+    _typed.text = '${[...words, tag].join(' ')} ';
+    _typed.selection = TextSelection.collapsed(offset: _typed.text.length);
+    _applyFilter();
   }
 
   @override
   void dispose() {
+    _typedFocus.dispose();
+    _typed.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     try {
-      final articles = await ArticleApi.recent(limit: _pageSize, tags: _selected.toList());
+      final articles = await ArticleApi.recent(limit: _pageSize, tags: _activeTags());
       if (!mounted) return;
       setState(() {
         _articles = articles;
@@ -115,7 +168,7 @@ class _ArticlesPageState extends State<ArticlesPage> {
       final more = await ArticleApi.recent(
         limit: _pageSize,
         offset: _articles!.length,
-        tags: _selected.toList(),
+        tags: _activeTags(),
       );
       if (!mounted) return;
       setState(() {
@@ -139,8 +192,9 @@ class _ArticlesPageState extends State<ArticlesPage> {
     if (mounted) await _load();
   }
 
-  /// The labels to cross, shown above the list rather than on a screen of
-  /// their own: choosing them and seeing what they leave is one act.
+  /// The field to cross labels in, shown above the list rather than on a
+  /// screen of its own: choosing them and seeing what they leave is one
+  /// act.
   Widget _filterPanel() {
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -153,27 +207,67 @@ class _ArticlesPageState extends State<ArticlesPage> {
               children: [
                 Expanded(
                   child: Text(
-                    _selected.isEmpty
-                        ? 'Choisissez une ou plusieurs étiquettes'
+                    _activeTags().isEmpty
+                        ? 'Tapez une ou plusieurs étiquettes'
                         : 'Articles portant toutes ces étiquettes',
                     style: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
-                if (_selected.isNotEmpty)
+                if (_activeTags().isNotEmpty)
                   TextButton(onPressed: _clearTags, child: const Text('Tout enlever')),
               ],
             ),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final tag in _tags)
-                  FilterChip(
-                    label: Text('#${tag.tag}  ${tag.count}'),
-                    selected: _selected.contains(tag.tag),
-                    onSelected: (_) => _toggleTag(tag.tag),
+            RawAutocomplete<String>(
+              textEditingController: _typed,
+              focusNode: _typedFocus,
+              optionsBuilder: (value) => _suggestions(value.text),
+              onSelected: _completeWith,
+              fieldViewBuilder: (context, controller, focusNode, onSubmitted) {
+                return TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _applyFilter(),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    hintText: 'loi #vote — dièse facultatif',
                   ),
-              ],
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    child: ConstrainedBox(
+                      // Bounded, or a long list of labels would cover the
+                      // articles the filter exists to reveal.
+                      constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
+                      child: ListView(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        children: [
+                          for (final option in options)
+                            ListTile(
+                              dense: true,
+                              title: Text('#$option'),
+                              trailing: Text(
+                                // Empty rather than throwing if the label
+                                // list has been reloaded since the options
+                                // were built: a missing count is worth far
+                                // less than a crash.
+                                '${_countFor(option) ?? ''}',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                              onTap: () => onSelected(option),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -185,12 +279,12 @@ class _ArticlesPageState extends State<ArticlesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: QueelAppBar(
-        title: _selected.isEmpty ? 'Articles' : 'Articles · ${_selected.length} étiquette(s)',
+        title: _activeTags().isEmpty ? 'Articles' : 'Articles filtrés',
         actions: [
           if (_tags.isNotEmpty)
             IconButton(
               onPressed: () => setState(() => _filterOpen = !_filterOpen),
-              icon: Icon(_selected.isEmpty ? Icons.filter_list : Icons.filter_list_off),
+              icon: Icon(_activeTags().isEmpty ? Icons.filter_list : Icons.filter_list_off),
               tooltip: 'Filtrer par étiquettes',
             ),
         ],
@@ -217,9 +311,9 @@ class _ArticlesPageState extends State<ArticlesPage> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
                   child: Text(
-                    _selected.isEmpty
+                    _activeTags().isEmpty
                         ? 'Aucun article pour le moment.'
-                        : 'Aucun article ne porte à la fois ${_selected.map((tag) => '#$tag').join(', ')}.',
+                        : 'Aucun article ne porte à la fois ${_activeTags().map((tag) => '#$tag').join(', ')}.',
                     textAlign: TextAlign.center,
                   ),
                 ),
