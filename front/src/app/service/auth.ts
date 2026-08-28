@@ -44,6 +44,9 @@ export class AuthService {
     // construction finish first.
     if (this.isAuthenticated()) {
       queueMicrotask(() => {
+        // Seeds the signal me() then keeps up to date: it only ever
+        // patches an existing user, having nothing to build one from on
+        // its own — the id comes from here.
         this.me().subscribe((me) => {
           this._user.set({
             id: me.userId,
@@ -82,30 +85,56 @@ export class AuthService {
   // prompt for one and call this again with the same idToken plus that
   // pseudo.
   googleLogin(idToken: string, pseudo?: string): Observable<GoogleAuthNeedsPseudo | User> {
-    return this.http.post<GoogleAuthResult>(`${API_BASE_URL}/api/auth/google`, { idToken, pseudo }).pipe(
-      map((response) => {
-        if ('needsPseudo' in response) {
-          return response;
-        }
-        const { user, tokens } = this.toSession(response);
-        this.tokenStorage.write(tokens);
-        this._tokens.set(tokens);
-        this._user.set(user);
-        return user;
-      }),
+    return this.http
+      .post<GoogleAuthResult>(`${API_BASE_URL}/api/auth/google`, { idToken, pseudo })
+      .pipe(
+        map((response) => {
+          if ('needsPseudo' in response) {
+            return response;
+          }
+          const { user, tokens } = this.toSession(response);
+          this.tokenStorage.write(tokens);
+          this._tokens.set(tokens);
+          this._user.set(user);
+          return user;
+        }),
+      );
+  }
+
+  // Who the caller is and what they're allowed to do right now — the api
+  // reads it from the rbac directory on every request, not from the token
+  // (see its currentPermissions), so this reflects a grant or a revocation
+  // made moments ago.
+  //
+  // Never cached, and it refreshes the shell's own copy of the user as a
+  // side effect. That copy is set at sign-in and drives the "Créer" button
+  // in the top bar; without this it would keep offering an action the api
+  // has since started refusing, until the next reload. Every page that
+  // gates on a permission already calls this on init, so the button now
+  // corrects itself on the first navigation after a change.
+  me(): Observable<MeResponse> {
+    return this.http.get<MeResponse>(`${API_BASE_URL}/api/me`).pipe(
+      tap((me) =>
+        this._user.update((user) =>
+          user === null
+            ? user
+            : {
+                ...user,
+                pseudo: me.pseudo,
+                displayName: me.pseudo || me.email.split('@')[0],
+                root: me.root,
+                canCreateText: me.root || me.permissions.canCreateText,
+              },
+        ),
+      ),
     );
   }
 
-  // Who the caller is and what they're allowed to do, straight from their
-  // JWT claims (see api's meHandler) — used by adminGuard to decide
-  // whether the backoffice is reachable. Not cached: rights can change
-  // between visits, and this is only called when it actually matters.
-  me(): Observable<MeResponse> {
-    return this.http.get<MeResponse>(`${API_BASE_URL}/api/me`);
-  }
-
   confirm(email: string, code: string): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${API_BASE_URL}/api/auth/confirm`, { email, code: Number(code) });
+    return this.http.post<{ message: string }>(`${API_BASE_URL}/api/auth/confirm`, {
+      email,
+      code: Number(code),
+    });
   }
 
   logout(): void {
