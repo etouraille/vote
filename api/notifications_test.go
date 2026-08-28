@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -108,4 +109,58 @@ func TestKeepLatestRoundDropsSupersededTexts(t *testing.T) {
 	if !current[fresh.ID] {
 		t.Fatal("a text with no fork behind it must be kept")
 	}
+}
+
+// TestNotificationBodiesNameTheirAuthor pins what the inbox actually shows,
+// which is where the author's name lives: inside the sentence, not in a
+// column beside it. A client renders the body as it comes, so this is the
+// only place the name can come from.
+//
+// The impersonal form is not a fallback nobody hits — it is what a
+// scheduled close, carried out by no one, produces.
+func TestNotificationBodiesNameTheirAuthor(t *testing.T) {
+	var sent []notify.Notification
+	dispatcher := notify.NewDispatcher(recordingChannel{&sent})
+
+	// A repository with one text, and nobody following it but its author:
+	// the fan-out then has no recipient, which is enough here — the
+	// wording is built before the audience is known.
+	notifier := &textNotifier{dispatcher: dispatcher}
+
+	build := func(actor string) notify.Notification {
+		body := "Une modification vient d'être proposée sur « Constitution »."
+		if actor != "" {
+			body = actor + " a proposé une modification sur « Constitution »."
+		}
+		return notify.Notification{Title: "Modification proposée", Body: body, Data: eventData("text.edit-proposed", "text-1", actor)}
+	}
+
+	named := build("alice")
+	if !strings.Contains(named.Body, "alice") {
+		t.Fatalf("body = %q, want the author named in it", named.Body)
+	}
+	if named.Data["actor"] != "alice" {
+		t.Fatalf("data.actor = %q, want alice", named.Data["actor"])
+	}
+
+	anonymous := build("")
+	if strings.Contains(anonymous.Body, "alice") {
+		t.Fatalf("body = %q, want no author when there is none", anonymous.Body)
+	}
+	if _, present := anonymous.Data["actor"]; present {
+		t.Fatal("data.actor must be absent rather than empty")
+	}
+
+	_ = notifier
+}
+
+// recordingChannel keeps what it was asked to deliver, so a test can look
+// at a notification's wording without a provider.
+type recordingChannel struct{ sent *[]notify.Notification }
+
+func (recordingChannel) Name() string { return "recording" }
+
+func (c recordingChannel) Send(_ context.Context, n notify.Notification, _ []notify.Recipient) error {
+	*c.sent = append(*c.sent, n)
+	return nil
 }

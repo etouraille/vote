@@ -24,6 +24,19 @@ class NotificationTypes {
   /// cast while a round is open, so the round is still there to go to.
   static const voteCast = 'text.vote-cast';
 
+  /// What the inbox lists on this app: a change to a text, and the close
+  /// that settles one.
+  ///
+  /// Votes are left out on purpose — a text under active voting produces
+  /// one per voter, and they would bury the two events a reader actually
+  /// acts on. They still arrive as push notifications; this is about what
+  /// the list keeps.
+  ///
+  /// Passed to the api rather than filtered here: the unread count is
+  /// computed from the same restriction, and filtering in the app would
+  /// leave the badge counting notifications the list never shows.
+  static const inboxTypes = [editProposed, roundClosed];
+
   /// Whether a notification of this kind should open the vote page rather
   /// than the reading page.
   ///

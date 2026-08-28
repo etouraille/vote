@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/etouraille/queel"
@@ -59,13 +60,19 @@ func (s *Store) SaveNotifications(ctx context.Context, userIDs []string, kind, t
 }
 
 // ListNotifications returns a user's inbox, newest first.
-func (s *Store) ListNotifications(ctx context.Context, userID string, limit int) ([]storedNotification, error) {
+// types narrows the listing to certain event kinds; empty means every
+// kind. A client that shows only some of them has to be able to say so
+// here rather than filter what it receives — the unread count is computed
+// from the same restriction below, and one filtered in the client would
+// leave the badge promising notifications the list never shows.
+func (s *Store) ListNotifications(ctx context.Context, userID string, limit int, types []string) ([]storedNotification, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, type, coalesce(text_id, ''), title, body, created_at, read_at IS NOT NULL
 		FROM notifications
 		WHERE user_id = $1
+		  AND (cardinality($3::text[]) = 0 OR type = ANY($3))
 		ORDER BY created_at DESC, id DESC
-		LIMIT $2`, userID, limit)
+		LIMIT $2`, userID, limit, pq.Array(types))
 	if err != nil {
 		return nil, err
 	}
@@ -93,9 +100,13 @@ func (s *Store) ListNotifications(ctx context.Context, userID string, limit int)
 // after the same filter the listing applies (see keepLatestRound). Counting
 // in SQL would count rows the list then hides, and the badge would promise
 // notifications nobody can find.
-func (s *Store) UnreadNotificationTexts(ctx context.Context, userID string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT coalesce(text_id, '') FROM notifications WHERE user_id = $1 AND read_at IS NULL`, userID)
+func (s *Store) UnreadNotificationTexts(ctx context.Context, userID string, types []string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT coalesce(text_id, '')
+		FROM notifications
+		WHERE user_id = $1
+		  AND read_at IS NULL
+		  AND (cardinality($2::text[]) = 0 OR type = ANY($2))`, userID, pq.Array(types))
 	if err != nil {
 		return nil, err
 	}
@@ -200,14 +211,26 @@ func listNotificationsHandler(store *Store, repo *queel.Repository) http.Handler
 		// Asked for more than will be shown: what the filter below drops
 		// would otherwise leave the page short of the limit for no reason
 		// the reader can see.
-		stored, err := store.ListNotifications(r.Context(), claims.Subject, limit*latestRoundOverfetch)
+		// ?types=a,b restricts to certain event kinds. Empty means all of
+		// them, which is what the web front asks for; the mobile app lists
+		// only text changes and round closures.
+		var types []string
+		if raw := r.URL.Query().Get("types"); raw != "" {
+			for _, kind := range strings.Split(raw, ",") {
+				if kind = strings.TrimSpace(kind); kind != "" {
+					types = append(types, kind)
+				}
+			}
+		}
+
+		stored, err := store.ListNotifications(r.Context(), claims.Subject, limit*latestRoundOverfetch, types)
 		if err != nil {
 			log.Printf("listing notifications for %s: %v", claims.Subject, err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
 
-		unreadTexts, err := store.UnreadNotificationTexts(r.Context(), claims.Subject)
+		unreadTexts, err := store.UnreadNotificationTexts(r.Context(), claims.Subject, types)
 		if err != nil {
 			log.Printf("counting unread notifications for %s: %v", claims.Subject, err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")

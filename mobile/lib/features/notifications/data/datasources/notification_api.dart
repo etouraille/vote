@@ -1,5 +1,6 @@
 import '../../../../core/api/api_client.dart';
 import '../../../../core/api/endpoints.dart';
+import '../../notification_types.dart';
 import '../models/app_notification.dart';
 
 /// The read side of notifications: what push already delivered, fetched
@@ -12,7 +13,7 @@ class NotificationApi {
   /// [limit] is capped server-side; leaving it unset takes the api's own
   /// default rather than duplicating that number here.
   static Future<NotificationPage> list({int? limit}) async {
-    final path = limit == null ? Endpoints.notifications : '${Endpoints.notifications}?limit=$limit';
+    final path = Endpoints.notifications(types: NotificationTypes.inboxTypes, limit: limit);
     return NotificationPage.fromJson(await ApiClient.get(path) as Map<String, dynamic>);
   }
 

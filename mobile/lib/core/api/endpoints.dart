@@ -38,7 +38,13 @@ class Endpoints {
   /// alongside it. The same events push delivers (see NotificationService),
   /// kept server-side so the history survives a reinstall and reads the
   /// same on every device.
-  static const notifications = '/api/me/notifications';
+  static String notifications({List<String> types = const [], int? limit}) {
+    final query = <String>[
+      if (types.isNotEmpty) 'types=${types.join(',')}',
+      if (limit != null) 'limit=$limit',
+    ];
+    return '/api/me/notifications${query.isEmpty ? '' : '?${query.join('&')}'}';
+  }
 
   /// Flips one notification between read and unread — the body carries
   /// which, so the same route serves both directions.
