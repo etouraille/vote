@@ -1,6 +1,7 @@
 import '../../../../core/api/api_client.dart';
 import '../../../../core/api/endpoints.dart';
 import '../models/article.dart';
+import '../models/tag_count.dart';
 import '../models/text_detail.dart';
 
 class ArticleApi {
@@ -17,8 +18,19 @@ class ArticleApi {
     return TextDetail.fromJson(json as Map<String, dynamic>);
   }
 
-  static Future<List<Article>> recent({int limit = 20, int offset = 0}) async {
-    final json = await ApiClient.get(Endpoints.recentTexts(limit, offset));
+  /// [tags] narrows the list to articles carrying every one of them.
+  static Future<List<Article>> recent({
+    int limit = 20,
+    int offset = 0,
+    List<String> tags = const [],
+  }) async {
+    final json = await ApiClient.get(Endpoints.recentTexts(limit, offset, tags: tags));
     return (json as List).map((item) => Article.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  /// The labels in use, most used first.
+  static Future<List<TagCount>> tags() async {
+    final json = await ApiClient.get(Endpoints.tags);
+    return (json as List).map((item) => TagCount.fromJson(item as Map<String, dynamic>)).toList();
   }
 }

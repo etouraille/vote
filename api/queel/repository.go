@@ -852,15 +852,28 @@ func (r *Repository) CastVote(fragmentID, userID string) error {
 	return r.store.WriteBatch(ops)
 }
 
-// TextsByTag returns every current text carrying a label, newest first —
-// the same order and the same exclusion RecentTexts applies, since this is
-// that listing narrowed rather than a different one.
+// TextsByTags returns every current text carrying *all* of tags, newest
+// first — the same order and the same exclusion RecentTexts applies, since
+// this is that listing narrowed rather than a different one.
+//
+// All of them and not any: crossing labels is how someone narrows a list,
+// and a union would widen it with every label added, which is the opposite
+// of what selecting a second one asks for.
+//
+// Only the first label is scanned; the rest are checked against each
+// candidate's own Tags, which the text already carries. Intersecting N
+// index scans would cost N times as much to reach a result that can only
+// be smaller than the first.
 //
 // Superseded versions are skipped: a label follows its text to each fork
 // (see CloseRound), so an old version answering here would show a text the
 // rest of the app has already moved past.
-func (r *Repository) TextsByTag(tag string) ([]*Text, error) {
-	kvs, err := r.store.Scan(tagIndexPrefix(tag))
+func (r *Repository) TextsByTags(tags []string) ([]*Text, error) {
+	if len(tags) == 0 {
+		return nil, nil
+	}
+
+	kvs, err := r.store.Scan(tagIndexPrefix(tags[0]))
 	if err != nil {
 		return nil, err
 	}
@@ -877,6 +890,10 @@ func (r *Repository) TextsByTag(tag string) ([]*Text, error) {
 			return nil, err
 		}
 
+		if !carriesAll(text, tags[1:]) {
+			continue
+		}
+
 		superseded, err := r.IsSuperseded(text.ID)
 		if err != nil {
 			return nil, err
@@ -888,6 +905,24 @@ func (r *Repository) TextsByTag(tag string) ([]*Text, error) {
 
 	sort.Slice(texts, func(i, j int) bool { return texts[i].CreatedAt.After(texts[j].CreatedAt) })
 	return texts, nil
+}
+
+// carriesAll reports whether a text bears every one of tags. Linear over a
+// list capped at MaxTags, which is shorter than any index it would replace.
+func carriesAll(text *Text, tags []string) bool {
+	for _, wanted := range tags {
+		found := false
+		for _, own := range text.Tags {
+			if own == wanted {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // TagCount is one label and how many current texts carry it.

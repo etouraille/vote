@@ -5,6 +5,7 @@ import '../../../../core/network/exceptions.dart';
 import 'text_detail_page.dart';
 import '../../data/datasources/article_api.dart';
 import '../../data/models/article.dart';
+import '../../data/models/tag_count.dart';
 
 /// One page of articles. The list scrolls, so this is a batch size rather
 /// than a screenful.
@@ -29,6 +30,13 @@ class _ArticlesPageState extends State<ArticlesPage> {
   List<Article>? _articles;
   String? _error;
 
+  /// The labels on offer, and the ones being crossed. A set rather than a
+  /// single value: the point of this filter is the intersection, and each
+  /// label added leaves fewer articles.
+  List<TagCount> _tags = const [];
+  final _selected = <String>{};
+  bool _filterOpen = false;
+
   bool _loadingMore = false;
   bool _hasMore = true;
 
@@ -36,6 +44,37 @@ class _ArticlesPageState extends State<ArticlesPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _load();
+    _loadTags();
+  }
+
+  /// Silent on failure: losing the labels costs the filter, never the list
+  /// they would have narrowed.
+  Future<void> _loadTags() async {
+    try {
+      final tags = await ArticleApi.tags();
+      if (mounted) setState(() => _tags = tags);
+    } catch (_) {
+      if (mounted) setState(() => _tags = const []);
+    }
+  }
+
+  /// Adds a label to the crossing, or takes it out — one control does both,
+  /// so there is nothing separate to find in order to undo.
+  void _toggleTag(String tag) {
+    setState(() {
+      if (!_selected.remove(tag)) _selected.add(tag);
+      _articles = null;
+    });
+    _load();
+  }
+
+  void _clearTags() {
+    if (_selected.isEmpty) return;
+    setState(() {
+      _selected.clear();
+      _articles = null;
+    });
     _load();
   }
 
@@ -47,7 +86,7 @@ class _ArticlesPageState extends State<ArticlesPage> {
 
   Future<void> _load() async {
     try {
-      final articles = await ArticleApi.recent(limit: _pageSize);
+      final articles = await ArticleApi.recent(limit: _pageSize, tags: _selected.toList());
       if (!mounted) return;
       setState(() {
         _articles = articles;
@@ -73,7 +112,11 @@ class _ArticlesPageState extends State<ArticlesPage> {
     setState(() => _loadingMore = true);
 
     try {
-      final more = await ArticleApi.recent(limit: _pageSize, offset: _articles!.length);
+      final more = await ArticleApi.recent(
+        limit: _pageSize,
+        offset: _articles!.length,
+        tags: _selected.toList(),
+      );
       if (!mounted) return;
       setState(() {
         _articles = [..._articles!, ...more];
@@ -96,11 +139,73 @@ class _ArticlesPageState extends State<ArticlesPage> {
     if (mounted) await _load();
   }
 
+  /// The labels to cross, shown above the list rather than on a screen of
+  /// their own: choosing them and seeing what they leave is one act.
+  Widget _filterPanel() {
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selected.isEmpty
+                        ? 'Choisissez une ou plusieurs étiquettes'
+                        : 'Articles portant toutes ces étiquettes',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+                if (_selected.isNotEmpty)
+                  TextButton(onPressed: _clearTags, child: const Text('Tout enlever')),
+              ],
+            ),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final tag in _tags)
+                  FilterChip(
+                    label: Text('#${tag.tag}  ${tag.count}'),
+                    selected: _selected.contains(tag.tag),
+                    onSelected: (_) => _toggleTag(tag.tag),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const QueelAppBar(title: 'Articles'),
-      body: switch ((_articles, _error)) {
+      appBar: QueelAppBar(
+        title: _selected.isEmpty ? 'Articles' : 'Articles · ${_selected.length} étiquette(s)',
+        actions: [
+          if (_tags.isNotEmpty)
+            IconButton(
+              onPressed: () => setState(() => _filterOpen = !_filterOpen),
+              icon: Icon(_selected.isEmpty ? Icons.filter_list : Icons.filter_list_off),
+              tooltip: 'Filtrer par étiquettes',
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_filterOpen) _filterPanel(),
+          Expanded(child: _list()),
+        ],
+      ),
+    );
+  }
+
+  Widget _list() {
+    return switch ((_articles, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
         (null, final error?) => Center(child: Text(error, style: const TextStyle(color: Colors.red))),
         (final articles?, _) when articles.isEmpty => RefreshIndicator(
@@ -108,10 +213,15 @@ class _ArticlesPageState extends State<ArticlesPage> {
             // A ListView rather than a bare Center: pull-to-refresh needs
             // something scrollable under it.
             child: ListView(
-              children: const [
+              children: [
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-                  child: Text('Aucun article pour le moment.', textAlign: TextAlign.center),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+                  child: Text(
+                    _selected.isEmpty
+                        ? 'Aucun article pour le moment.'
+                        : 'Aucun article ne porte à la fois ${_selected.map((tag) => '#$tag').join(', ')}.',
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ],
             ),
@@ -133,8 +243,7 @@ class _ArticlesPageState extends State<ArticlesPage> {
               },
             ),
           ),
-      },
-    );
+    };
   }
 }
 

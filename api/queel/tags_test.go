@@ -93,7 +93,7 @@ func TestTextsByTagFollowsTheFork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := repo.TextsByTag("loi")
+	found, err := repo.TextsByTags([]string{"loi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestTextsByTagFollowsTheFork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err = repo.TextsByTag("loi")
+	found, err = repo.TextsByTags([]string{"loi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestTextsByTagFollowsTheFork(t *testing.T) {
 	if err := repo.DeleteText(outcome.Text.ID); err != nil {
 		t.Fatal(err)
 	}
-	if found, err = repo.TextsByTag("loi"); err != nil {
+	if found, err = repo.TextsByTags([]string{"loi"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(found) != 0 {
@@ -154,5 +154,59 @@ func TestTextsByTagFollowsTheFork(t *testing.T) {
 	}
 	if len(tags) != 0 {
 		t.Fatalf("Tags = %v after deleting the only text, want none", tags)
+	}
+}
+
+// TestTextsByTagsIntersects pins that crossing labels narrows rather than
+// widens: selecting a second one asks for fewer texts, not more, so a text
+// has to carry them all.
+func TestTextsByTagsIntersects(t *testing.T) {
+	engine, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	repo := NewRepository(engine)
+
+	both, err := repo.CreateText("Les deux", "Contenu.", "creator", ParseTags("#loi #vote"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateText("Une seule", "Contenu.", "creator", ParseTags("#loi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateText("L'autre", "Contenu.", "creator", ParseTags("#vote")); err != nil {
+		t.Fatal(err)
+	}
+
+	// One label: everything carrying it.
+	if found, err := repo.TextsByTags([]string{"loi"}); err != nil {
+		t.Fatal(err)
+	} else if len(found) != 2 {
+		t.Fatalf("one label matched %d texts, want 2", len(found))
+	}
+
+	// Two: only what carries both.
+	found, err := repo.TextsByTags([]string{"loi", "vote"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 || found[0].ID != both.ID {
+		t.Fatalf("two labels matched %v, want only the text carrying both", found)
+	}
+
+	// The order of the labels cannot change the answer, though only the
+	// first is the one actually scanned.
+	if reversed, err := repo.TextsByTags([]string{"vote", "loi"}); err != nil {
+		t.Fatal(err)
+	} else if len(reversed) != 1 || reversed[0].ID != both.ID {
+		t.Fatalf("reversing the labels gave %v, want the same single text", reversed)
+	}
+
+	// A label nobody uses empties the result rather than being ignored.
+	if none, err := repo.TextsByTags([]string{"loi", "inexistant"}); err != nil {
+		t.Fatal(err)
+	} else if len(none) != 0 {
+		t.Fatalf("an unused label matched %v, want none", none)
 	}
 }

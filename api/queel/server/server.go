@@ -110,6 +110,20 @@ func checkSubscription(w http.ResponseWriter, repo *queel.Repository, textID, us
 	return true
 }
 
+// queryTags reads the repeatable ?tag= parameter into the set a listing is
+// narrowed by. Repeating a parameter rather than packing a list into one
+// keeps a label containing a comma from splitting into two.
+func queryTags(r *http.Request) []string {
+	raw := r.URL.Query()["tag"]
+	tags := make([]string, 0, len(raw))
+	for _, tag := range raw {
+		if tag = strings.ToLower(strings.TrimSpace(tag)); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
+}
+
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
 	const prefix = "Bearer "
@@ -219,10 +233,11 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 		}
 
 		// ?tag=… narrows the same listing, mirroring the api's own route.
+		// Repeated, it narrows further: a text must carry every one given.
 		var texts []*queel.Text
 		var err error
-		if tag := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("tag"))); tag != "" {
-			if texts, err = repo.TextsByTag(tag); err != nil {
+		if tags := queryTags(r); len(tags) > 0 {
+			if texts, err = repo.TextsByTags(tags); err != nil {
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}

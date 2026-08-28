@@ -16,7 +16,21 @@ class Endpoints {
   /// The most recent articles, newest first, each with its tags and
   /// whether the caller follows it. Superseded versions are left out by
   /// the api, so this lists every article at its latest round.
-  static String recentTexts(int limit, int offset) => '/api/texts?limit=$limit&offset=$offset';
+  ///
+  /// [tags] narrows it: an article has to carry *every* one given, so each
+  /// label added leaves fewer. Repeated as its own parameter rather than
+  /// packed into a list, which would split a label containing a comma.
+  static String recentTexts(int limit, int offset, {List<String> tags = const []}) {
+    final query = [
+      'limit=$limit',
+      'offset=$offset',
+      for (final tag in tags) 'tag=${Uri.encodeQueryComponent(tag)}',
+    ];
+    return '/api/texts?${query.join('&')}';
+  }
+
+  /// The labels in use, most used first — what the filter offers.
+  static const tags = '/api/tags';
 
   /// Follow a text, or stop — the same path, POST to join and DELETE to
   /// leave. The caller is taken from the bearer token, so nothing

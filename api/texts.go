@@ -131,6 +131,19 @@ type recentTextResult struct {
 	Subscribed bool `json:"subscribed"`
 }
 
+// queryTags reads the repeatable ?tag= parameter into the set a listing is
+// narrowed by.
+func queryTags(r *http.Request) []string {
+	raw := r.URL.Query()["tag"]
+	tags := make([]string, 0, len(raw))
+	for _, tag := range raw {
+		if tag = strings.ToLower(strings.TrimSpace(tag)); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
+}
+
 // paginate applies limit/offset to a list already in hand. TextsByTag
 // answers with everything carrying a label — a set small enough to hold,
 // and one the store cannot page through itself.
@@ -196,9 +209,14 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 		// ?tag=… narrows the same listing rather than opening a second
 		// route: the caller wants the recent texts, filtered — the shape of
 		// the answer, and everything decorating it below, is identical.
+		//
+		// Repeatable, and repeating it narrows further: a text has to carry
+		// every label given. Repeating the parameter rather than packing a
+		// list into one keeps a label containing a comma from splitting in
+		// two.
 		var texts []*queel.Text
-		if tag := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("tag"))); tag != "" {
-			texts, err = repo.TextsByTag(tag)
+		if tags := queryTags(r); len(tags) > 0 {
+			texts, err = repo.TextsByTags(tags)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "erreur serveur")
 				return
