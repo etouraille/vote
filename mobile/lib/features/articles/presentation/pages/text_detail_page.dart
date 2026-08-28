@@ -126,6 +126,26 @@ class _TextDetailPageState extends State<TextDetailPage> {
                   ),
                   const SizedBox(height: 16),
                 ],
+                // Above the text, where a subtitle would be: what an
+                // article is about is read before the article itself.
+                if (text.tags.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final tag in text.tags)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('#$tag', style: Theme.of(context).textTheme.labelSmall),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Text(text.content),
               ],
             ),
