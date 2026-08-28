@@ -12,6 +12,7 @@ class AppNotification {
     required this.body,
     required this.createdAt,
     required this.read,
+    required this.actor,
   });
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
@@ -27,6 +28,9 @@ class AppNotification {
       // format it; the api sends RFC 3339.
       createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
       read: json['read'] as bool,
+      // Absent when nobody caused it — a scheduled close — or on a row
+      // written before the api recorded it.
+      actor: json['actor'] as String?,
     );
   }
 
@@ -42,6 +46,11 @@ class AppNotification {
   final String title;
   final String body;
   final DateTime createdAt;
+
+  /// Who caused it, when somebody did. The body names them too; this is
+  /// for showing the name on its own rather than reading it back out of a
+  /// sentence.
+  final String? actor;
 
   /// Read state is per person, not per event: the same edit notified to
   /// five followers is five rows, each with its own read state.
@@ -60,6 +69,7 @@ class AppNotification {
       body: body,
       createdAt: createdAt,
       read: read ?? this.read,
+      actor: actor,
     );
   }
 }

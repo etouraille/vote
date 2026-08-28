@@ -213,7 +213,9 @@ class _NotificationTile extends StatelessWidget {
           Text(notification.body),
           const SizedBox(height: 4),
           Text(
-            _relativeTime(notification.createdAt),
+            notification.actor == null
+                ? _relativeTime(notification.createdAt)
+                : '${notification.actor} · ${_relativeTime(notification.createdAt)}',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
           ),
         ],

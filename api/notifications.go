@@ -277,7 +277,7 @@ func buildDispatcher(store *Store, serviceAccountPath string) *notify.Dispatcher
 	// between the two (see notify.Notification).
 	channels = append(channels, notify.NewInboxChannel(
 		func(ctx context.Context, userIDs []string, n notify.Notification) error {
-			return store.SaveNotifications(ctx, userIDs, n.Data["type"], n.Data["textId"], n.Title, n.Body)
+			return store.SaveNotifications(ctx, userIDs, n.Data["type"], n.Data["textId"], n.Title, n.Body, n.Data["actor"])
 		}))
 
 	dispatcher := notify.NewDispatcher(channels...)

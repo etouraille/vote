@@ -1,0 +1,13 @@
+-- Who caused the event, kept beside the sentence rather than only inside
+-- it.
+--
+-- The body already names them ("Alice a proposé une modification sur X"),
+-- which is what a client renders; this is for showing the name as its own
+-- element — beside the date, in its own style — without a client having to
+-- parse a sentence to find it.
+--
+-- Nullable, and empty for good reason rather than by oversight: a
+-- scheduled close is carried out by nobody, and rows written before this
+-- column existed have no author to recover. Both read as "no name to
+-- show", which is exactly what they mean.
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor TEXT;

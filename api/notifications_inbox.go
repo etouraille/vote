@@ -42,20 +42,26 @@ type storedNotification struct {
 	Body      string `json:"body"`
 	CreatedAt string `json:"createdAt"`
 	Read      bool   `json:"read"`
+
+	// Actor is who caused the event, absent when nobody did — a scheduled
+	// close, or a row written before the column existed. The body names
+	// them too; this is for showing the name as its own element rather
+	// than parsing it back out of a sentence.
+	Actor string `json:"actor,omitempty"`
 }
 
 // SaveNotifications writes one row per recipient in a single statement —
 // unnest expands the user id array into rows, so a text with fifty
 // followers costs one round trip rather than fifty.
-func (s *Store) SaveNotifications(ctx context.Context, userIDs []string, kind, textID, title, body string) error {
+func (s *Store) SaveNotifications(ctx context.Context, userIDs []string, kind, textID, title, body, actor string) error {
 	if len(userIDs) == 0 {
 		return nil
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO notifications (user_id, type, text_id, title, body)
-		SELECT unnest($1::text[]), $2, NULLIF($3, ''), $4, $5`,
-		pq.Array(userIDs), kind, textID, title, body)
+		INSERT INTO notifications (user_id, type, text_id, title, body, actor)
+		SELECT unnest($1::text[]), $2, NULLIF($3, ''), $4, $5, NULLIF($6, '')`,
+		pq.Array(userIDs), kind, textID, title, body, actor)
 	return err
 }
 
@@ -67,7 +73,7 @@ func (s *Store) SaveNotifications(ctx context.Context, userIDs []string, kind, t
 // leave the badge promising notifications the list never shows.
 func (s *Store) ListNotifications(ctx context.Context, userID string, limit int, types []string) ([]storedNotification, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, type, coalesce(text_id, ''), title, body, created_at, read_at IS NOT NULL
+		SELECT id, type, coalesce(text_id, ''), title, body, created_at, read_at IS NOT NULL, coalesce(actor, '')
 		FROM notifications
 		WHERE user_id = $1
 		  AND (cardinality($3::text[]) = 0 OR type = ANY($3))
@@ -83,7 +89,7 @@ func (s *Store) ListNotifications(ctx context.Context, userID string, limit int,
 	for rows.Next() {
 		var n storedNotification
 		var createdAt time.Time
-		if err := rows.Scan(&n.ID, &n.Type, &n.TextID, &n.Title, &n.Body, &createdAt, &n.Read); err != nil {
+		if err := rows.Scan(&n.ID, &n.Type, &n.TextID, &n.Title, &n.Body, &createdAt, &n.Read, &n.Actor); err != nil {
 			return nil, err
 		}
 		n.CreatedAt = createdAt.Format(time.RFC3339)

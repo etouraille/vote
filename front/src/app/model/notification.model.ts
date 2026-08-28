@@ -17,6 +17,11 @@ export interface AppNotification {
   title: string;
   body: string;
   createdAt: string;
+  // Who caused it. Absent when nobody did — a scheduled close, or a row
+  // written before the api recorded it. The body names them too; this is
+  // for showing the name on its own rather than reading it back out of a
+  // sentence.
+  actor?: string;
   // Read state is per person, not per event: the same edit notified to
   // five followers is five rows, each with its own read state.
   read: boolean;
