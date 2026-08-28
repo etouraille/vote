@@ -368,7 +368,7 @@ func (r *Repository) CurrentRound(textID string) (*Round, error) {
 // votes) exactly as before, just with a due date a background worker (see
 // DueScheduledRounds) will eventually act on. Calling this again before
 // that happens overwrites the previous ScheduledCloseAt with the new one.
-func (r *Repository) ScheduleRoundClose(textID string, closeAt time.Time) (*Round, error) {
+func (r *Repository) ScheduleRoundClose(textID string, closeAt time.Time, userID string) (*Round, error) {
 	round, err := r.CurrentRound(textID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -385,6 +385,7 @@ func (r *Repository) ScheduleRoundClose(textID string, closeAt time.Time) (*Roun
 	}
 
 	round.ScheduledCloseAt = &closeAt
+	round.ScheduledCloseBy = userID
 	payload, err := json.Marshal(round)
 	if err != nil {
 		return nil, err

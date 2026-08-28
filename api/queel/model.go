@@ -88,6 +88,17 @@ type Round struct {
 	// cleared once set (Status flipping to closed is what stops it from
 	// being "due" again — it stays as a record of what was requested).
 	ScheduledCloseAt *time.Time `json:"scheduledCloseAt,omitempty"`
+
+	// ScheduledCloseBy is who asked for that close. Recorded because the
+	// worker that eventually performs it has no caller of its own: without
+	// this it would notify every follower of the outcome, including the
+	// person who set it in motion — the one rule the fan-out otherwise
+	// keeps everywhere, that nobody is told about their own doing.
+	//
+	// Empty for a round nobody scheduled, and for rounds scheduled before
+	// this field existed: the worker then excludes nobody, which is the
+	// previous behaviour rather than a wrong guess at an author.
+	ScheduledCloseBy string `json:"scheduledCloseBy,omitempty"`
 }
 
 // Fragment is one candidate piece of content proposed for a given slot.

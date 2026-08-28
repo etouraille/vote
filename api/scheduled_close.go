@@ -74,9 +74,13 @@ func runScheduledCloseWorker(ctx context.Context, repo *queel.Repository, index 
 					log.Printf("scheduled close worker: indexing text %s (forked from %s): %v", outcome.Text.ID, round.TextID, err)
 				}
 
-				// No actor to exclude: nobody asked for this close now, the
-				// due date did — so every follower hears about it.
-				notifier.RoundClosed(outcome.Text, "")
+				// Nobody performs this close, the due date does — but
+				// somebody asked for it, and the rule that you are never
+				// told about your own doing has to survive the delay
+				// between the asking and the doing. Empty for a round
+				// scheduled before that was recorded, which excludes
+				// nobody, as before.
+				notifier.RoundClosed(outcome.Text, round.ScheduledCloseBy)
 				log.Printf("scheduled close worker: closed round %d for text %s (forked into %s)", round.Number, round.TextID, outcome.Text.ID)
 			}
 		}

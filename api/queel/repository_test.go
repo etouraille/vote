@@ -938,7 +938,7 @@ func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
 	}
 
 	closeAt := time.Now().Add(7 * 24 * time.Hour)
-	round, err := repo.ScheduleRoundClose(text.ID, closeAt)
+	round, err := repo.ScheduleRoundClose(text.ID, closeAt, "creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -974,7 +974,7 @@ func TestScheduleRoundCloseEmptyRound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(24*time.Hour)); err != ErrEmptyRound {
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(24*time.Hour), "creator"); err != ErrEmptyRound {
 		t.Fatalf("expected ErrEmptyRound, got %v", err)
 	}
 }
@@ -994,7 +994,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	if _, err := repo.ProposeEdit(dueText.ID, dStart, dEnd, "modifie", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(dueText.ID, past); err != nil {
+	if _, err := repo.ScheduleRoundClose(dueText.ID, past, "creator"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1007,7 +1007,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	if _, err := repo.ProposeEdit(futureText.ID, fStart, fEnd, "modifie", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(futureText.ID, future); err != nil {
+	if _, err := repo.ScheduleRoundClose(futureText.ID, future, "creator"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1031,7 +1031,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	if _, err := repo.ProposeEdit(closedText.ID, cStart, cEnd, "modifie", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(closedText.ID, past); err != nil {
+	if _, err := repo.ScheduleRoundClose(closedText.ID, past, "creator"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.CloseRound(closedText.ID); err != nil {
@@ -1765,5 +1765,54 @@ func TestSubscribersForTextAlwaysIncludesItsCreator(t *testing.T) {
 	}
 	if len(subscribers) != 1 || subscribers[0] != "creator" {
 		t.Fatalf("expected only the creator, got %v", subscribers)
+	}
+}
+
+// TestScheduleRoundCloseRecordsWhoAsked pins what the scheduled-close
+// worker needs to keep the fan-out's one rule: nobody hears about their own
+// doing. The worker has no caller of its own, so unless the asker is
+// recorded here, it would notify every follower of a close — including the
+// person who set it in motion, minutes or days earlier.
+func TestScheduleRoundCloseRecordsWhoAsked(t *testing.T) {
+	repo := newTestRepository(t)
+	content := "Nous le peuple francais declare."
+	text, err := repo.CreateText("Constitution", content, "creator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end := runeRange(content, "francais")
+	if _, err := repo.ProposeEdit(text.ID, start, end, "français", "alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(24*time.Hour), "alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-read rather than trusting the returned value: what the worker will
+	// see is what was persisted.
+	round, err := repo.CurrentRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if round.ScheduledCloseBy != "alice" {
+		t.Fatalf("ScheduledCloseBy = %q, want alice", round.ScheduledCloseBy)
+	}
+	if round.ScheduledCloseAt == nil {
+		t.Fatal("ScheduledCloseAt must still be set alongside it")
+	}
+
+	// Empty is a legitimate value: a round scheduled before this was
+	// recorded excludes nobody, which is the previous behaviour rather than
+	// a wrong guess at an author.
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(48*time.Hour), ""); err != nil {
+		t.Fatal(err)
+	}
+	round, err = repo.CurrentRound(text.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if round.ScheduledCloseBy != "" {
+		t.Fatalf("ScheduledCloseBy = %q, want it cleared", round.ScheduledCloseBy)
 	}
 }

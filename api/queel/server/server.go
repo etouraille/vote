@@ -450,7 +450,10 @@ func scheduleCloseHandler(repo *queel.Repository, jwtSecret []byte) http.Handler
 		}
 
 		closeAt := time.Now().Add(time.Duration(req.Days) * 24 * time.Hour)
-		round, err := repo.ScheduleRoundClose(r.PathValue("id"), closeAt)
+		// userId names the caller, as everywhere in this package: it never
+		// reads a token for identity. Empty simply excludes nobody from
+		// the notification the close will eventually send.
+		round, err := repo.ScheduleRoundClose(r.PathValue("id"), closeAt, r.URL.Query().Get("userId"))
 		if err != nil {
 			writeRepositoryError(w, err)
 			return

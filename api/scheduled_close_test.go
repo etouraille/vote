@@ -37,7 +37,7 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 	if _, err := repo.ProposeEdit(dueText.ID, 0, len("Contenu"), "Contenu modifie", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(dueText.ID, time.Now().Add(-time.Hour)); err != nil {
+	if _, err := repo.ScheduleRoundClose(dueText.ID, time.Now().Add(-time.Hour), "creator"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,7 +50,7 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 	if _, err := repo.ProposeEdit(futureText.ID, 0, len("Autre"), "Un autre", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(futureText.ID, time.Now().Add(7*24*time.Hour)); err != nil {
+	if _, err := repo.ScheduleRoundClose(futureText.ID, time.Now().Add(7*24*time.Hour), "creator"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -103,7 +103,7 @@ func TestRunScheduledCloseWorkerRespectsIsLeader(t *testing.T) {
 	if _, err := repo.ProposeEdit(text.ID, 0, len("Contenu"), "Contenu modifie", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(-time.Hour)); err != nil {
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(-time.Hour), "creator"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -275,7 +275,7 @@ func TestRunScheduledCloseWorkerInClusterModeOnlyLeaderCloses(t *testing.T) {
 	if _, err := repo.ProposeEdit(text.ID, 0, len("Contenu"), "Contenu modifie", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(-time.Hour)); err != nil {
+	if _, err := repo.ScheduleRoundClose(text.ID, time.Now().Add(-time.Hour), "creator"); err != nil {
 		t.Fatal(err)
 	}
 

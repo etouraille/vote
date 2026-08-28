@@ -197,6 +197,11 @@ type scheduleCloseResponse struct {
 // up.
 func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "token manquant")
+			return
+		}
 		if !requirePermission(w, r, rbac.ActionCloseText) {
 			return
 		}
@@ -224,7 +229,7 @@ func scheduleCloseHandler(repo *queel.Repository) http.HandlerFunc {
 		}
 
 		closeAt := time.Now().Add(time.Duration(req.Days) * 24 * time.Hour)
-		round, err := repo.ScheduleRoundClose(textID, closeAt)
+		round, err := repo.ScheduleRoundClose(textID, closeAt, claims.Subject)
 		if err != nil {
 			if errors.Is(err, queel.ErrNoOpenRound) {
 				writeError(w, http.StatusConflict, "aucun tour de vote ouvert pour ce texte")
