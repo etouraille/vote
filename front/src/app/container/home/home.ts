@@ -67,7 +67,9 @@ export class HomePage implements OnInit {
   // A single active label rather than a set: narrowing by two at once is a
   // question nobody asked, and it would need the api to answer it.
   readonly tags = signal<TagCount[]>([]);
-  readonly activeTag = signal('');
+  // A set rather than one label: crossing several is how a list narrows,
+  // and the api answers with the texts carrying them all.
+  readonly activeTags = signal<string[]>([]);
 
   // Null when no search is active — distinct from an empty array, which
   // means "searched, found nothing" and must show that rather than
@@ -218,8 +220,19 @@ export class HomePage implements OnInit {
 
   // Selecting the active label clears it, so one control both applies and
   // undoes the filter.
+  // Adds a label to the crossing or takes it out — one control does both,
+  // so there is nothing separate to find in order to undo.
   filterByTag(tag: string): void {
-    this.activeTag.set(this.activeTag() === tag ? '' : tag);
+    this.activeTags.update((tags) =>
+      tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag],
+    );
+    this.selectedId.set(null);
+    this.loadRecentTexts();
+  }
+
+  clearTags(): void {
+    if (this.activeTags().length === 0) return;
+    this.activeTags.set([]);
     this.selectedId.set(null);
     this.loadRecentTexts();
   }
@@ -257,7 +270,7 @@ export class HomePage implements OnInit {
   private loadRecentTexts(): void {
     this.hasMoreRecentTexts.set(true);
     this.recentTexts.set([]);
-    this.textService.listRecent(RECENT_TEXTS_COUNT, 0, this.activeTag()).subscribe((texts) => {
+    this.textService.listRecent(RECENT_TEXTS_COUNT, 0, this.activeTags()).subscribe((texts) => {
       const items = texts.map((text) => this.toThreadItem(text));
       this.recentTexts.set(items);
       this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);
@@ -274,7 +287,7 @@ export class HomePage implements OnInit {
 
     this.loadingMoreRecentTexts.set(true);
     const offset = this.recentTexts().length;
-    this.textService.listRecent(RECENT_TEXTS_COUNT, offset, this.activeTag()).subscribe({
+    this.textService.listRecent(RECENT_TEXTS_COUNT, offset, this.activeTags()).subscribe({
       next: (texts) => {
         this.loadingMoreRecentTexts.set(false);
         this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);

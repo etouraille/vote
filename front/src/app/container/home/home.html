@@ -268,16 +268,25 @@
            make: a single label on offer filters nothing. -->
       @if (tags().length > 0 && !searchResults()) {
         <div class="mt-2 flex flex-wrap gap-1">
+          @if (activeTags().length > 0) {
+            <button
+              type="button"
+              (click)="clearTags()"
+              class="rounded px-1.5 py-0.5 text-xs text-slate-500 underline hover:text-slate-800"
+            >
+              Tout enlever
+            </button>
+          }
           @for (tag of tags(); track tag.tag) {
             <button
               type="button"
               (click)="filterByTag(tag.tag)"
               class="rounded px-1.5 py-0.5 text-xs"
-              [class.bg-slate-200]="activeTag() !== tag.tag"
-              [class.text-slate-700]="activeTag() !== tag.tag"
-              [class.bg-slate-900]="activeTag() === tag.tag"
-              [class.text-white]="activeTag() === tag.tag"
-              [attr.aria-pressed]="activeTag() === tag.tag"
+              [class.bg-slate-200]="!activeTags().includes(tag.tag)"
+              [class.text-slate-700]="!activeTags().includes(tag.tag)"
+              [class.bg-slate-900]="activeTags().includes(tag.tag)"
+              [class.text-white]="activeTags().includes(tag.tag)"
+              [attr.aria-pressed]="activeTags().includes(tag.tag)"
             >
               #{{ tag.tag }}
               <span class="opacity-60">{{ tag.count }}</span>
@@ -344,8 +353,8 @@
         <p class="p-4 text-center text-xs text-slate-400">
           @if (searchResults()) {
             Aucun résultat.
-          } @else if (activeTag()) {
-            Aucun texte sous #{{ activeTag() }}.
+          } @else if (activeTags().length > 0) {
+            Aucun texte ne porte à la fois #{{ activeTags().join(' #') }}.
           } @else {
             Aucun texte pour le moment.
           }

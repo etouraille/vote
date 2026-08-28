@@ -39,9 +39,12 @@ export class TextService {
   //
   // tag narrows the same listing rather than calling elsewhere: the caller
   // wants the recent texts, filtered, and the answer has the same shape.
-  listRecent(limit: number, offset = 0, tag = ''): Observable<RecentText[]> {
+  listRecent(limit: number, offset = 0, tags: string[] = []): Observable<RecentText[]> {
     let params = new HttpParams().set('limit', limit).set('offset', offset);
-    if (tag !== '') params = params.set('tag', tag);
+    // Repeated rather than joined: a text has to carry every label given,
+    // and one parameter per label keeps a label containing a comma from
+    // splitting in two.
+    for (const tag of tags) params = params.append('tag', tag);
     return this.http.get<RecentText[]>(`${API_BASE_URL}/api/texts`, { params });
   }
 
