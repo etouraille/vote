@@ -96,19 +96,56 @@ class _ArticlesPageState extends State<ArticlesPage> {
   static List<String> _words(String line) =>
       line.split(RegExp(r'[#,;\s]+')).where((word) => word.isNotEmpty).toList();
 
-  /// Labels that match what is being typed, minus those already on the
-  /// line: suggesting a label a second time offers a narrowing that would
-  /// change nothing.
+  /// Accents folded away, so typing "ecolo" finds "écologie".
+  ///
+  /// Labels keep their accents — they are what gets stored and displayed —
+  /// and only the comparison drops them. Nobody reaches for the accented
+  /// key while typing a filter, and a completion that demands it is a
+  /// completion that never fires.
+  static String _fold(String value) {
+    const accented = 'àáâäãåçèéêëìíîïñòóôöõùúûüýÿœæ';
+    const plain = 'aaaaaaceeeeiiiinooooouuuuyyoa';
+
+    final folded = StringBuffer();
+    for (final rune in value.toLowerCase().runes) {
+      final index = accented.indexOf(String.fromCharCode(rune));
+      folded.write(index == -1 ? String.fromCharCode(rune) : plain[index]);
+    }
+    return folded.toString();
+  }
+
+  /// Labels matching what is being typed, minus those already on the line:
+  /// suggesting a label a second time offers a narrowing that would change
+  /// nothing.
+  ///
+  /// Matched anywhere in the label rather than only at its start — someone
+  /// looking for "loi-de-finances" is as likely to type "finances" — but
+  /// those starting with what was typed come first, since that is what a
+  /// reader expects to see at the top.
   Iterable<String> _suggestions(String line) {
     final words = _words(line.toLowerCase());
     final current = _endsOnSeparator(line) ? '' : (words.isEmpty ? '' : words.last);
     final already = words.take(words.length - (current.isEmpty ? 0 : 1)).toSet();
+    final typed = _fold(current);
 
-    return _tags
-        .map((tag) => tag.tag)
-        .where((tag) => !already.contains(tag))
-        .where((tag) => current.isEmpty || (tag.startsWith(current) && tag != current))
-        .take(8);
+    final matches = <({String tag, int rank})>[];
+    for (var i = 0; i < _tags.length; i++) {
+      final tag = _tags[i].tag;
+      if (already.contains(tag)) continue;
+      if (typed.isNotEmpty && !_fold(tag).contains(typed)) continue;
+      matches.add((tag: tag, rank: i));
+    }
+
+    // The api's own position is part of the key, not left to the sort:
+    // List.sort is not stable in Dart, so equal-relevance labels would
+    // otherwise come back in an order that could change between keystrokes.
+    matches.sort((a, b) {
+      final aStarts = _fold(a.tag).startsWith(typed);
+      final bStarts = _fold(b.tag).startsWith(typed);
+      if (aStarts != bStarts) return aStarts ? -1 : 1;
+      return a.rank.compareTo(b.rank);
+    });
+    return matches.take(8).map((match) => match.tag);
   }
 
   int? _countFor(String tag) {
