@@ -13,15 +13,14 @@ import (
 	"github.com/etouraille/queel/rbac"
 )
 
-// TestCurrentPermissionsFallsBackToTheToken covers the degraded path, which
-// is the one no manual test ever exercises: with the api's user directory
-// unreachable, a caller keeps exactly the rights their token carries rather
-// than losing all of them.
+// TestCurrentPermissionsFallsBackToTheToken covers the last resort of the
+// degraded path: the directory is unreachable *and* nothing was ever read
+// for this caller, so there is nothing fresher than their token to use.
 //
 // Refusing instead would turn a directory hiccup into a site-wide lockout,
-// and the token is precisely what the api trusted before this lookup
-// existed — so falling back is a return to the previous behaviour, not a
-// hole opened for the occasion.
+// and the token is precisely what the api trusted before any of this — so
+// falling back is a return to the previous behaviour, not a hole opened for
+// the occasion.
 func TestCurrentPermissionsFallsBackToTheToken(t *testing.T) {
 	// A real handle on an address nothing listens on: sql.Open doesn't
 	// connect, so the failure surfaces on the query — which is the shape of
@@ -41,7 +40,7 @@ func TestCurrentPermissionsFallsBackToTheToken(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	}
 
-	perms, root := currentPermissions(context.Background(), store, nil, claims)
+	perms, root := currentPermissions(context.Background(), store, nil, newPermissionCache(), claims)
 
 	if !perms.CanVote || !perms.CanSubscribe {
 		t.Fatalf("permissions = %+v, want the token's own when the directory can't answer", perms)
@@ -51,6 +50,53 @@ func TestCurrentPermissionsFallsBackToTheToken(t *testing.T) {
 	}
 	if !root {
 		t.Fatal("root must survive the fallback too")
+	}
+}
+
+// TestCurrentPermissionsPrefersTheCacheOverTheToken is the point of the
+// cache: with the same unreachable directory, rights read at some earlier
+// moment beat the token, which was signed at sign-in and never revisited.
+//
+// The two disagree here on purpose — the token still claims a right the
+// directory had already taken away. Serving the token would re-grant it for
+// the length of the outage.
+func TestCurrentPermissionsPrefersTheCacheOverTheToken(t *testing.T) {
+	db, err := sql.Open("postgres", "postgres://nobody@127.0.0.1:1/none?sslmode=disable&connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+
+	claims := rbac.Claims{
+		Subject:   "user-1",
+		Root:      true,
+		Perms:     rbac.Permissions{CanVote: true, CanCreateText: true}.Bits(),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}
+
+	// What the directory last said, before it stopped answering: the right
+	// to create was withdrawn, and so was root.
+	cache := newPermissionCache()
+	cache.remember("user-1", rbac.Permissions{CanVote: true}, false)
+
+	perms, root := currentPermissions(context.Background(), store, nil, cache, claims)
+
+	if !perms.CanVote {
+		t.Fatalf("permissions = %+v, want the cached rights", perms)
+	}
+	if perms.CanCreateText {
+		t.Fatal("a right the directory had withdrawn must not come back from the token")
+	}
+	if root {
+		t.Fatal("root must come from the cache too, not from the token")
+	}
+
+	// Somebody the cache has never seen still gets their token, so one
+	// unknown caller doesn't lose everything.
+	stranger := rbac.Claims{Subject: "user-2", Perms: rbac.Permissions{CanVote: true}.Bits()}
+	if perms, _ := currentPermissions(context.Background(), store, nil, cache, stranger); !perms.CanVote {
+		t.Fatalf("an uncached caller = %+v, want their token's rights", perms)
 	}
 }
 

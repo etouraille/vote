@@ -42,6 +42,11 @@ var publicAPIPaths = map[string]bool{
 // (Claims.Subject, the api user ID) and to authorize gated actions
 // (Claims.Allows).
 func requireToken(jwtSecret []byte, store *Store, rbacStore *rbac.Store, next http.Handler) http.Handler {
+	// One cache per middleware, which is one per process: its scope is
+	// exactly the lifetime of the server it serves, and no package-level
+	// state is needed to say so.
+	cache := newPermissionCache()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api") || publicAPIPaths[r.URL.Path] {
 			next.ServeHTTP(w, r)
@@ -69,7 +74,7 @@ func requireToken(jwtSecret []byte, store *Store, rbacStore *rbac.Store, next ht
 		// reads live rights without any of them having to know — and so a
 		// change made in the backoffice takes effect on the next request
 		// rather than on the next sign-in.
-		perms, root := currentPermissions(r.Context(), store, rbacStore, claims)
+		perms, root := currentPermissions(r.Context(), store, rbacStore, cache, claims)
 		claims.Perms, claims.Root = perms.Bits(), root
 
 		ctx := context.WithValue(r.Context(), claimsContextKey, claims)
@@ -89,24 +94,34 @@ func requireToken(jwtSecret []byte, store *Store, rbacStore *rbac.Store, next ht
 // (see the rbac package doc): the api's own user row carries the rbac uuid,
 // the rbac entry carries the rights.
 //
-// A failed lookup falls back to the token's own claims rather than
-// refusing. That is precisely what the api trusted until now, so an
-// unreachable directory degrades to the previous behaviour instead of
-// locking everyone out — at the cost of a revocation not being enforced
-// while it is down.
-func currentPermissions(ctx context.Context, store *Store, rbacStore *rbac.Store, claims rbac.Claims) (rbac.Permissions, bool) {
-	fallback := rbac.PermissionsFromBits(claims.Perms)
-
+// A failed lookup never refuses: locking everyone out over a directory
+// hiccup would turn an outage into an incident. It degrades instead, in two
+// steps.
+//
+// First to the last rights read successfully for this caller (see
+// permissionCache) — recent, because a successful read had to happen during
+// this process's life. Only if there are none does it fall back to the
+// caller's own token, which is what the api trusted before any of this and
+// may be a full session old.
+//
+// The cost is unchanged in kind and smaller in degree: a revocation is
+// still not enforced while the directory is down, but the window is now
+// bounded by how long ago that account was last seen rather than by how
+// long ago it signed in.
+func currentPermissions(ctx context.Context, store *Store, rbacStore *rbac.Store, cache *permissionCache, claims rbac.Claims) (rbac.Permissions, bool) {
 	user, err := store.UserByID(ctx, claims.Subject)
-	if err != nil || user.RbacUUID == nil {
-		return fallback, claims.Root
+	if err == nil && user.RbacUUID != nil {
+		rbacUser, err := rbacStore.GetUser(*user.RbacUUID)
+		if err == nil {
+			cache.remember(claims.Subject, rbacUser.Permissions, rbacUser.Root)
+			return rbacUser.Permissions, rbacUser.Root
+		}
 	}
 
-	rbacUser, err := rbacStore.GetUser(*user.RbacUUID)
-	if err != nil {
-		return fallback, claims.Root
+	if perms, root, found := cache.recall(claims.Subject); found {
+		return perms, root
 	}
-	return rbacUser.Permissions, rbacUser.Root
+	return rbac.PermissionsFromBits(claims.Perms), claims.Root
 }
 
 // claimsFromContext fetches the rbac.Claims requireToken attached to r's
