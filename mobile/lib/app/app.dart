@@ -6,7 +6,7 @@ import 'theme/app_theme.dart';
 class QueelApp extends StatelessWidget {
   const QueelApp({super.key, required this.initialPage});
 
-  /// Where main() decided to land: SearchPage if a still-valid session was
+  /// Where main() decided to land: ArticlesPage if a still-valid session was
   /// already in SecureStorage, LoginPage otherwise. A concrete widget
   /// rather than a route name — MaterialApp.initialRoute would make
   /// Flutter also try to generate "/" as an ancestor route first (its

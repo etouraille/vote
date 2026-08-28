@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
-import '../../../search/presentation/pages/text_detail_page.dart';
+import '../../../articles/presentation/pages/text_detail_page.dart';
 import '../../../vote/presentation/pages/vote_page.dart';
 import '../../data/datasources/subscription_api.dart';
 import '../../data/models/subscribed_text.dart';
 
 /// The texts the signed-in user follows, listed by title. Reached from the
-/// search page's overflow menu; tapping an entry opens the same
-/// TextDetailPage a search result does.
+/// overflow menu on any screen; tapping an entry opens the same
+/// TextDetailPage the article list does.
 class SubscriptionsPage extends StatefulWidget {
   const SubscriptionsPage({super.key});
 

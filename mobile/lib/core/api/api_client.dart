@@ -9,8 +9,8 @@ import '../storage/secure_storage.dart';
 /// Talks to api's `/api/...` routes over Env.apiBaseUrl. Attaches the
 /// stored session token (see SecureStorage) as a bearer header when one
 /// exists, matching the front end's own auth interceptor — every route
-/// this app calls (search, text detail) requires one; only login itself
-/// doesn't.
+/// this app calls (the article list, an article) requires one; only login
+/// itself doesn't.
 class ApiClient {
   ApiClient._();
 

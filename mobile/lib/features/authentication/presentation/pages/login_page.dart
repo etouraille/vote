@@ -113,7 +113,7 @@ class _LoginPageState extends State<LoginPage> {
     Navigator.of(context).pushReplacementNamed(AppRouter.articles);
 
     // After the replacement, so the text a notification pointed at is
-    // pushed on top of the search page and the back button leads somewhere.
+    // pushed on top of the article list and the back button leads somewhere.
     // A no-op unless a tap launched the app while it was signed out.
     NotificationService.openPendingLaunch();
   }

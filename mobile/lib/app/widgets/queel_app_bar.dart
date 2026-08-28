@@ -12,7 +12,7 @@ import '../router.dart';
 const _logoutAction = 'logout';
 
 /// The app bar every signed-in screen uses, so the overflow menu is reached
-/// from anywhere rather than only from the search page.
+/// from anywhere rather than only from the article list.
 ///
 /// Deliberately not used by the login page: its entries all lead to
 /// screens that require a session, so offering them to someone who hasn't
@@ -62,10 +62,6 @@ class QueelAppBar extends StatelessWidget implements PreferredSizeWidget {
               child: Text(_notificationsLabel()),
             ),
             const PopupMenuItem(value: AppRouter.subscriptions, child: Text('Mes abonnements')),
-            // Search was the landing screen before the article list took
-            // its place; without an entry here it would have no way in at
-            // all.
-            const PopupMenuItem(value: AppRouter.search, child: Text('Rechercher')),
             // Last, and set apart: it's the one entry that undoes the
             // session rather than moving around inside it.
             const PopupMenuDivider(),

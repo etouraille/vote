@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
-import '../../../search/presentation/pages/text_detail_page.dart';
+import '../../../articles/presentation/pages/text_detail_page.dart';
 import '../../../vote/presentation/pages/vote_page.dart';
 import '../../data/datasources/notification_api.dart';
 import '../../data/models/app_notification.dart';

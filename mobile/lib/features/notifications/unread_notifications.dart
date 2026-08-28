@@ -20,7 +20,7 @@ class UnreadNotifications {
   static final ValueNotifier<int> count = ValueNotifier<int>(0);
 
   /// How long a freshly-read count is trusted without asking again. The
-  /// bell is rebuilt on every screen, so without this, walking from search
+  /// bell is rebuilt on every screen, so without this, walking from the list
   /// to a text to its round would cost one request per step to answer a
   /// question whose answer cannot have changed — and when it does change,
   /// the push that changed it already bumped the count itself.

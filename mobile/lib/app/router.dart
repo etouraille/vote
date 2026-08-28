@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../features/articles/presentation/pages/articles_page.dart';
 import '../features/authentication/presentation/pages/login_page.dart';
 import '../features/notifications/presentation/pages/notifications_page.dart';
-import '../features/search/presentation/pages/search_page.dart';
 import '../features/subscriptions/presentation/pages/subscriptions_page.dart';
 
 /// Route names and generation in one place, instead of scattering route
@@ -18,7 +17,6 @@ class AppRouter {
 
   static const String login = '/login';
   static const String articles = '/articles';
-  static const String search = '/search';
   static const String subscriptions = '/subscriptions';
   static const String notifications = '/notifications';
 
@@ -32,8 +30,6 @@ class AppRouter {
         return MaterialPageRoute(settings: settings, builder: (_) => const LoginPage());
       case articles:
         return MaterialPageRoute(settings: settings, builder: (_) => const ArticlesPage());
-      case search:
-        return MaterialPageRoute(settings: settings, builder: (_) => const SearchPage());
       case subscriptions:
         return MaterialPageRoute(settings: settings, builder: (_) => const SubscriptionsPage());
       case notifications:

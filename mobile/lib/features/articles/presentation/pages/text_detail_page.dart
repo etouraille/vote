@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../../subscriptions/data/datasources/subscription_api.dart';
-import '../../data/datasources/search_api.dart';
+import '../../data/datasources/article_api.dart';
 import '../../data/models/text_detail.dart';
 
-/// Pushed on top of the search results (a normal Navigator push already
-/// layers it over the previous screen) when a title is tapped — shows that
-/// text's full content, and lets the reader follow it.
+/// One article, read in full — pushed from the list, from a subscription,
+/// or from a tapped notification. Shows the text as its latest round
+/// settled it, and lets the reader choose to follow it.
 class TextDetailPage extends StatefulWidget {
   const TextDetailPage({super.key, required this.textId});
 
@@ -44,7 +44,7 @@ class _TextDetailPageState extends State<TextDetailPage> {
   Future<void> _load() async {
     // Both in flight at once: the subscription state is only needed to
     // label the button, so it must not delay showing the text.
-    final textRequest = SearchApi.text(widget.textId);
+    final textRequest = ArticleApi.text(widget.textId);
     final subscriptionsRequest = SubscriptionApi.list();
     final permissionRequest = SubscriptionApi.canSubscribe();
 

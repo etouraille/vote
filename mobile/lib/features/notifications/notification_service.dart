@@ -8,7 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../app/config/env.dart';
 import '../../app/router.dart';
-import '../search/presentation/pages/text_detail_page.dart';
+import '../articles/presentation/pages/text_detail_page.dart';
 import '../vote/presentation/pages/vote_page.dart';
 import 'data/datasources/device_api.dart';
 import 'notification_types.dart';

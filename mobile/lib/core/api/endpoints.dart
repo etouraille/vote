@@ -10,7 +10,6 @@ class Endpoints {
   /// backend without it configured answers 404 here.
   static const googleLogin = '/api/auth/google';
 
-  static String search(String query) => '/api/texts/search?q=${Uri.encodeQueryComponent(query)}';
 
   static String text(String id) => '/api/texts/$id';
 
