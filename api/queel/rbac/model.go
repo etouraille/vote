@@ -93,14 +93,20 @@ func (p *Permissions) UnmarshalJSON(data []byte) error {
 // of Permissions meant to travel inside an auth token (a JWT claim, say) so
 // that a caller who already trusts the token doesn't need to round-trip to
 // queel's rbac socket on every request just to know what a user may do.
-type PermBit uint8
+// uint16 rather than uint8: the mask travels as a JSON number in a token,
+// never as a byte, so widening it costs nothing and no already-signed token
+// reads differently. Eight positions were nearly spent — six in use and one
+// retired — and running out would have forced either a reuse of the retired
+// position or a change of representation, both under pressure.
+type PermBit uint16
 
 // Written as explicit positions rather than 1 << iota. When canSelect and
 // canEditSelection merged into CanEditText, dropping one from an iota block
 // would have shifted every bit above it down by one — and a token already
 // issued would then have decoded as a different set of rights entirely.
 // Freezing the positions keeps every mask ever signed readable; 1 << 4 is
-// simply retired.
+// simply retired. Of the sixteen PermBit now offers, six are in use, one is
+// retired, and nine are free.
 const (
 	PermVote       PermBit = 1 << 0
 	PermCreateText PermBit = 1 << 1
@@ -111,7 +117,7 @@ const (
 	PermSubscribe  PermBit = 1 << 6
 )
 
-// Bits packs p into a single byte, one bit per permission — see PermBit.
+// Bits packs p into a mask, one bit per permission — see PermBit.
 func (p Permissions) Bits() PermBit {
 	var b PermBit
 	if p.CanVote {

@@ -287,3 +287,32 @@ func TestPermissionBitsAreFrozen(t *testing.T) {
 		}
 	}
 }
+
+// TestPermBitReadsATokenSignedAsAUint8 is what makes widening PermBit safe
+// to do at all: the mask crosses the wire as a JSON number, so a token
+// signed while it was a uint8 has to decode into the wider type unchanged.
+// Were it ever encoded as a fixed-width value instead, this is the test
+// that would fail.
+func TestPermBitReadsATokenSignedAsAUint8(t *testing.T) {
+	// A mask written when PermBit was a byte: vote + editText + subscribe.
+	const signedWhenNarrow = `{"sub":"user-1","perms":73,"exp":0}`
+
+	var claims Claims
+	if err := json.Unmarshal([]byte(signedWhenNarrow), &claims); err != nil {
+		t.Fatal(err)
+	}
+
+	perms := PermissionsFromBits(claims.Perms)
+	if !perms.CanVote || !perms.CanEditText || !perms.CanSubscribe {
+		t.Fatalf("permissions = %+v, want vote + editText + subscribe", perms)
+	}
+	if perms.CanCreateText || perms.CanCloseText || perms.CanUpdateText {
+		t.Fatalf("permissions = %+v, want nothing beyond those three", perms)
+	}
+
+	// And the wider type actually reaches past the old ceiling.
+	wide := PermBit(1 << 15)
+	if wide == 0 {
+		t.Fatal("PermBit must hold a bit above position 7")
+	}
+}
