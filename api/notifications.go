@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/etouraille/queel"
@@ -39,13 +40,16 @@ func newTextNotifier(repo *queel.Repository, store *Store, dispatcher *notify.Di
 // that route — it proposes edits, see EditProposed below. Kept because the
 // route exists and a client that does use it should notify all the same.
 func (n *textNotifier) TextUpdated(text *queel.Text, actorID string) {
-	n.notify(text.ID, actorID, notify.Notification{
-		Title: "Texte modifié",
-		Body:  fmt.Sprintf("« %s » vient d'être modifié.", text.Title),
-		Data: map[string]string{
-			"type":   "text.updated",
-			"textId": text.ID,
-		},
+	n.notify(text.ID, actorID, func(actor string) notify.Notification {
+		body := fmt.Sprintf("« %s » vient d'être modifié.", text.Title)
+		if actor != "" {
+			body = fmt.Sprintf("%s a modifié « %s ».", actor, text.Title)
+		}
+		return notify.Notification{
+			Title: "Texte modifié",
+			Body:  body,
+			Data:  eventData("text.updated", text.ID, actor),
+		}
 	})
 }
 
@@ -54,13 +58,16 @@ func (n *textNotifier) TextUpdated(text *queel.Text, actorID string) {
 // out a slot and submitting a competing wording for it, which is what the
 // editor does and what followers are waiting to vote on.
 func (n *textNotifier) EditProposed(textID, title, actorID string) {
-	n.notify(textID, actorID, notify.Notification{
-		Title: "Modification proposée",
-		Body:  fmt.Sprintf("Une modification vient d'être proposée sur « %s ».", title),
-		Data: map[string]string{
-			"type":   "text.edit-proposed",
-			"textId": textID,
-		},
+	n.notify(textID, actorID, func(actor string) notify.Notification {
+		body := fmt.Sprintf("Une modification vient d'être proposée sur « %s ».", title)
+		if actor != "" {
+			body = fmt.Sprintf("%s a proposé une modification sur « %s ».", actor, title)
+		}
+		return notify.Notification{
+			Title: "Modification proposée",
+			Body:  body,
+			Data:  eventData("text.edit-proposed", textID, actor),
+		}
 	})
 }
 
@@ -78,16 +85,19 @@ func (n *textNotifier) EditProposed(textID, title, actorID string) {
 // actorID is empty when the scheduled-close worker is the one closing:
 // nobody performed the action, so nobody is excluded from hearing about it.
 func (n *textNotifier) RoundClosed(text *queel.Text, actorID string) {
-	n.notify(text.ID, actorID, notify.Notification{
-		Title: "Tour de vote clos",
-		Body:  fmt.Sprintf("Le vote sur « %s » est clos, la nouvelle version est disponible.", text.Title),
-		Data: map[string]string{
+	n.notify(text.ID, actorID, func(actor string) notify.Notification {
+		body := fmt.Sprintf("Le vote sur « %s » est clos, la nouvelle version est disponible.", text.Title)
+		if actor != "" {
+			body = fmt.Sprintf("%s a clos le vote sur « %s », la nouvelle version est disponible.", actor, text.Title)
+		}
+		return notify.Notification{
+			Title: "Tour de vote clos",
+			Body:  body,
 			// Not edit-proposed: there is no round open on a freshly forked
 			// text, so a client following this lands on the text itself
 			// rather than on an empty vote page.
-			"type":   "text.round-closed",
-			"textId": text.ID,
-		},
+			Data: eventData("text.round-closed", text.ID, actor),
+		}
 	})
 }
 
@@ -99,7 +109,7 @@ func (n *textNotifier) RoundClosed(text *queel.Text, actorID string) {
 // Returns immediately: delivery runs in the background on its own context,
 // so a slow provider never delays the response to the action that triggered
 // it, and cancelling that request doesn't cancel the notification.
-func (n *textNotifier) notify(textID, actorID string, notification notify.Notification) {
+func (n *textNotifier) notify(textID, actorID string, build func(actor string) notify.Notification) {
 	if n == nil || n.dispatcher == nil {
 		return
 	}
@@ -107,8 +117,50 @@ func (n *textNotifier) notify(textID, actorID string, notification notify.Notifi
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 		defer cancel()
-		n.deliver(ctx, textID, actorID, notification)
+		n.deliver(ctx, textID, actorID, build(n.actorName(ctx, actorID)))
 	}()
+}
+
+// actorName is who to name in a notification's wording: the pseudo if one
+// was set, otherwise the local part of the email — the same fallback the
+// front ends already display.
+//
+// Empty when there is nobody to name, and every wording then drops the name
+// rather than printing a blank. That covers a scheduled close carried out
+// by no one, and a lookup that failed: naming is a courtesy, and losing it
+// must not cost the notification itself.
+func (n *textNotifier) actorName(ctx context.Context, actorID string) string {
+	if actorID == "" {
+		return ""
+	}
+
+	user, err := n.store.UserByID(ctx, actorID)
+	if err != nil {
+		log.Printf("notify: naming the author of an event (%s): %v", actorID, err)
+		return ""
+	}
+	if user.Pseudo != nil && *user.Pseudo != "" {
+		return *user.Pseudo
+	}
+	if local, _, found := strings.Cut(user.Email, "@"); found && local != "" {
+		return local
+	}
+	return user.Email
+}
+
+// eventData is the machine-readable half of a notification: what happened,
+// to which text, and — when there is one to name — who did it. Clients
+// render the body as it comes, but carrying the name separately lets one
+// build its own wording without parsing a sentence.
+func eventData(eventType, textID, actor string) map[string]string {
+	data := map[string]string{
+		"type":   eventType,
+		"textId": textID,
+	}
+	if actor != "" {
+		data["actor"] = actor
+	}
+	return data
 }
 
 // deliver is notify's body, split out for VoteCast — which has to work out
@@ -154,15 +206,18 @@ func (n *textNotifier) VoteCast(fragmentID, actorID string) {
 			return
 		}
 
+		actor := n.actorName(ctx, actorID)
+		body := fmt.Sprintf("Un vote vient d'être déposé sur « %s ».", text.Title)
+		if actor != "" {
+			body = fmt.Sprintf("%s vient de voter sur « %s ».", actor, text.Title)
+		}
+
 		n.deliver(ctx, text.ID, actorID, notify.Notification{
 			Title: "Nouveau vote",
-			Body:  fmt.Sprintf("Un vote vient d'être déposé sur « %s ».", text.Title),
-			Data: map[string]string{
-				// A vote can only be cast while a round is open, so the
-				// round is where a tapped notification should land.
-				"type":   "text.vote-cast",
-				"textId": text.ID,
-			},
+			Body:  body,
+			// A vote can only be cast while a round is open, so the round
+			// is where a tapped notification should land.
+			Data: eventData("text.vote-cast", text.ID, actor),
 		})
 	}()
 }
