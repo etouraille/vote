@@ -102,9 +102,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 
 // CreateText creates a new text from its initial content, attributed to
 // authorID (see queel.Text.CreatedBy).
-func (c *Client) CreateText(ctx context.Context, title, content, authorID string) (*queel.Text, error) {
+func (c *Client) CreateText(ctx context.Context, title, content, authorID, tags string) (*queel.Text, error) {
 	var text queel.Text
-	body := map[string]string{"title": title, "content": content, "authorId": authorID}
+	body := map[string]string{"title": title, "content": content, "authorId": authorID, "tags": tags}
 	if err := c.do(ctx, http.MethodPost, "/texts", body, &text); err != nil {
 		return nil, err
 	}

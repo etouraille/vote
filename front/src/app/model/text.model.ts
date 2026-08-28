@@ -6,6 +6,9 @@ export interface Text {
   id: string;
   title: string;
   content: string;
+  // Free-form labels the author gave at creation, already parsed and
+  // normalised by the api. Always present, empty when there are none.
+  tags: string[];
   finalized: boolean;
   createdAt: string;
 }
@@ -23,6 +26,12 @@ export interface RecentText extends Text {
 // One entry of GET /api/me/subscriptions — a followed text reduced to what
 // a list of titles needs. Narrower than Text server-side too: carrying every
 // followed text's whole content just to name it would bloat the response.
+// One entry of GET /api/tags: a label and how many current texts carry it.
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
 export interface SubscribedText {
   id: string;
   title: string;

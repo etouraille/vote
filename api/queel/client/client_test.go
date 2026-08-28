@@ -46,7 +46,7 @@ func TestClientFullRoundTrip(t *testing.T) {
 	c := newTestClient(t)
 
 	content := "Nous le peuple francais declare."
-	text, err := c.CreateText(ctx, "Constitution", content, "creator")
+	text, err := c.CreateText(ctx, "Constitution", content, "creator", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestClientTextWithSlots(t *testing.T) {
 	c := newTestClient(t)
 
 	content := "Nous le peuple francais declare."
-	text, err := c.CreateText(ctx, "Constitution", content, "creator")
+	text, err := c.CreateText(ctx, "Constitution", content, "creator", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestClientCloseRoundWithNothingProposedIsAConflict(t *testing.T) {
 	ctx := context.Background()
 	c := newTestClient(t)
 
-	text, err := c.CreateText(ctx, "Constitution", "Nous le peuple.", "creator")
+	text, err := c.CreateText(ctx, "Constitution", "Nous le peuple.", "creator", "")
 	if err != nil {
 		t.Fatal(err)
 	}

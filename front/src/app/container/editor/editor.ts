@@ -52,6 +52,12 @@ export class EditorPage {
   // fetch below completes, and it becomes read-only from then on.
   readonly title = signal('');
 
+  // The author's single line of labels, kept exactly as typed and parsed by
+  // the api (see queel.ParseTags) rather than here: splitting it in the
+  // browser would let this client file a text under labels the mobile one
+  // wouldn't, on the same input.
+  readonly tags = signal('');
+
   // Gates the "Sauvegarder le texte" button — only relevant for the
   // create-a-new-text case (no savedTextId yet); see save().
   readonly canCreateText = signal(false);
@@ -232,7 +238,7 @@ export class EditorPage {
     this.saveError.set(null);
 
     const content = this.editorComponent.getText();
-    this.textService.create(this.title(), content).subscribe({
+    this.textService.create(this.title(), content, this.tags()).subscribe({
       next: (response) => {
         this.saving.set(false);
         this.savedTextId.set(response.id);

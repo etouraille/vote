@@ -190,6 +190,23 @@ func roundIndexPrefix(textID string) []byte {
 	return []byte(fmt.Sprintf("roundindex/%s/", textID))
 }
 
+// tagIndexKey lets "every text carrying this label" be a prefix scan. A
+// Text stores its own tags, but nothing maps a tag back to the texts that
+// bear it — the same double-storage fragment/fragmentindex already uses,
+// for the same reason: this store answers Get and prefix Scan, so every
+// question worth asking needs its own key.
+func tagIndexKey(tag, textID string) []byte {
+	return []byte(fmt.Sprintf("tagindex/%s/%s", tag, textID))
+}
+
+func tagIndexPrefix(tag string) []byte {
+	return []byte(fmt.Sprintf("tagindex/%s/", tag))
+}
+
+// allTagsPrefix walks every label ever used. Only for listing them, never
+// on a read path that filters by one.
+func allTagsPrefix() []byte { return []byte("tagindex/") }
+
 func userChoiceKey(textID, slotID, userID string) []byte {
 	return []byte(fmt.Sprintf("uservote/%s/%s/%s", textID, slotID, userID))
 }
@@ -210,12 +227,15 @@ func userChoicePrefix(textID string) string {
 // vote/edit/close/delete actions, its own author would be immediately
 // locked out of every action on the text they just created until they
 // separately clicked "Subscribe" on it.
-func (r *Repository) CreateText(title, content, authorID string) (*Text, error) {
+func (r *Repository) CreateText(title, content, authorID string, tags []string) (*Text, error) {
 	id, err := newID()
 	if err != nil {
 		return nil, err
 	}
-	text := &Text{ID: id, Title: title, Content: content, CreatedAt: time.Now(), CreatedBy: authorID}
+	if tags == nil {
+		tags = []string{}
+	}
+	text := &Text{ID: id, Title: title, Content: content, Tags: tags, CreatedAt: time.Now(), CreatedBy: authorID}
 
 	payload, err := json.Marshal(text)
 	if err != nil {
@@ -242,6 +262,9 @@ func (r *Repository) CreateText(title, content, authorID string) (*Text, error) 
 		{Key: subscriptionKey(id, authorID), Value: subPayload},
 		{Key: subscriptionIndexKey(authorID, id), Value: []byte(id)},
 	}, roundOps...)
+	for _, tag := range tags {
+		ops = append(ops, WriteOp{Key: tagIndexKey(tag, id), Value: []byte(id)})
+	}
 
 	if err := r.store.WriteBatch(ops); err != nil {
 		return nil, err
@@ -813,6 +836,95 @@ func (r *Repository) CastVote(fragmentID, userID string) error {
 	return r.store.WriteBatch(ops)
 }
 
+// TextsByTag returns every current text carrying a label, newest first —
+// the same order and the same exclusion RecentTexts applies, since this is
+// that listing narrowed rather than a different one.
+//
+// Superseded versions are skipped: a label follows its text to each fork
+// (see CloseRound), so an old version answering here would show a text the
+// rest of the app has already moved past.
+func (r *Repository) TextsByTag(tag string) ([]*Text, error) {
+	kvs, err := r.store.Scan(tagIndexPrefix(tag))
+	if err != nil {
+		return nil, err
+	}
+
+	texts := make([]*Text, 0, len(kvs))
+	for _, kv := range kvs {
+		text, err := r.Text(string(kv.Value))
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				// Indexed but gone: skipped rather than failing the whole
+				// listing over one dangling entry.
+				continue
+			}
+			return nil, err
+		}
+
+		superseded, err := r.IsSuperseded(text.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !superseded {
+			texts = append(texts, text)
+		}
+	}
+
+	sort.Slice(texts, func(i, j int) bool { return texts[i].CreatedAt.After(texts[j].CreatedAt) })
+	return texts, nil
+}
+
+// TagCount is one label and how many current texts carry it.
+type TagCount struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
+// Tags lists every label in use, most used first, then alphabetically so
+// the order is stable between calls rather than shifting on ties.
+//
+// One scan of the whole index — this feeds a list of labels to choose
+// from, which is read far less often than the texts themselves, and there
+// is no cheaper shape for the question "which labels exist".
+//
+// Counts only current versions, for the same reason TextsByTag skips
+// superseded ones: a label offering three texts that resolve to two is a
+// filter nobody can trust.
+func (r *Repository) Tags() ([]TagCount, error) {
+	kvs, err := r.store.Scan(allTagsPrefix())
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int)
+	for _, kv := range kvs {
+		tag, _, found := strings.Cut(strings.TrimPrefix(string(kv.Key), string(allTagsPrefix())), "/")
+		if !found {
+			continue
+		}
+
+		superseded, err := r.IsSuperseded(string(kv.Value))
+		if err != nil {
+			return nil, err
+		}
+		if !superseded {
+			counts[tag]++
+		}
+	}
+
+	tags := make([]TagCount, 0, len(counts))
+	for tag, count := range counts {
+		tags = append(tags, TagCount{Tag: tag, Count: count})
+	}
+	sort.Slice(tags, func(i, j int) bool {
+		if tags[i].Count != tags[j].Count {
+			return tags[i].Count > tags[j].Count
+		}
+		return tags[i].Tag < tags[j].Tag
+	})
+	return tags, nil
+}
+
 // UserVotes maps each slot of textID to the fragment userID currently has
 // voted for in it. Slots they have not voted in are absent rather than
 // present with an empty value, so a caller can tell "no vote" from "voted
@@ -1174,7 +1286,8 @@ func (r *Repository) DeleteUserTexts(userID string) ([]string, error) {
 // later forked into — a fork is its own independent text with its own ID;
 // delete it explicitly too if that's the intent.
 func (r *Repository) DeleteText(textID string) error {
-	if _, err := r.Text(textID); err != nil {
+	text, err := r.Text(textID)
+	if err != nil {
 		return err
 	}
 
@@ -1183,6 +1296,11 @@ func (r *Repository) DeleteText(textID string) error {
 		{Key: currentRoundKey(textID), Tombstone: true},
 		{Key: roundCountKey(textID), Tombstone: true},
 		{Key: supersededByKey(textID), Tombstone: true},
+	}
+	// The label index outlives the text otherwise, and filtering by that
+	// label would return an id nothing can load.
+	for _, tag := range text.Tags {
+		ops = append(ops, WriteOp{Key: tagIndexKey(tag, textID), Tombstone: true})
 	}
 
 	// Rounds aren't indexed by text, so this is a full scan filtered
@@ -1386,6 +1504,9 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 		ID:             newTextID,
 		Title:          text.Title,
 		Content:        spliceContent(text.Content, round.Slots, winners),
+		// Carried over: a round settles how the text is worded, never what
+		// it is about.
+		Tags:           text.Tags,
 		Finalized:      true,
 		CreatedAt:      time.Now(),
 		PreviousTextID: text.ID,
@@ -1428,6 +1549,15 @@ func (r *Repository) CloseRound(textID string) (*RoundOutcome, error) {
 		{Key: currentRoundKey(textID), Tombstone: true},
 		{Key: supersededByKey(textID), Value: []byte(newText.ID)},
 	}, nextRoundOps...)
+
+	// Moved to the fork, exactly as the subscriptions below are: a label
+	// describes the text, and the fork is what the text now is. Left on the
+	// old id, the filter would return a version nothing else shows.
+	for _, tag := range text.Tags {
+		ops = append(ops,
+			WriteOp{Key: tagIndexKey(tag, textID), Tombstone: true},
+			WriteOp{Key: tagIndexKey(tag, newText.ID), Value: []byte(newText.ID)})
+	}
 
 	subscriptionPrefix := "subscription/" + textID + "/"
 	subscriberKVs, err := r.store.Scan([]byte(subscriptionPrefix))

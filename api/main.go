@@ -222,6 +222,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/admin/users/{id}", deleteUserHandler(store, rbacStore, textRepo, searchIndex))
 	mux.HandleFunc("POST /api/texts", createTextHandler(textRepo, searchIndex))
 	mux.HandleFunc("GET /api/texts", recentTextsHandler(textRepo))
+	mux.HandleFunc("GET /api/tags", tagsHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/search", searchTextsHandler(searchIndex, textRepo))
 	mux.HandleFunc("GET /api/texts/{id}", getTextHandler(textRepo))
 	mux.HandleFunc("GET /api/texts/{id}/with-slots", textWithSlotsHandler(textRepo))

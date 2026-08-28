@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { HistoryVersion, RecentText, SearchResult } from '../../model/text.model';
+import { HistoryVersion, RecentText, SearchResult, TagCount } from '../../model/text.model';
 import { AuthService } from '../../service/auth';
 import { TextService } from '../../service/text';
 import { firstWords } from '../../util/words';
@@ -26,6 +26,7 @@ export interface ThreadItem {
   title: string;
   excerpt: string;
   subscribed: boolean;
+  tags: string[];
 
   // The whole text, for the reading pane. Null for a search result: that
   // response carries no content, so it is fetched when the item is first
@@ -61,6 +62,12 @@ export class HomePage implements OnInit {
   readonly searchError = signal<string | null>(null);
 
   readonly recentTexts = signal<ThreadItem[]>([]);
+
+  // The labels on offer, and the one being filtered on — empty for none.
+  // A single active label rather than a set: narrowing by two at once is a
+  // question nobody asked, and it would need the api to answer it.
+  readonly tags = signal<TagCount[]>([]);
+  readonly activeTag = signal('');
 
   // Null when no search is active — distinct from an empty array, which
   // means "searched, found nothing" and must show that rather than
@@ -197,6 +204,24 @@ export class HomePage implements OnInit {
       this.canSubscribe.set(me.root || me.permissions.canSubscribe);
     });
     this.loadRecentTexts();
+    this.loadTags();
+  }
+
+  // Silent on failure: losing the labels costs the filter, never the
+  // listing they would have narrowed.
+  private loadTags(): void {
+    this.textService.tags().subscribe({
+      next: (tags) => this.tags.set(tags),
+      error: () => this.tags.set([]),
+    });
+  }
+
+  // Selecting the active label clears it, so one control both applies and
+  // undoes the filter.
+  filterByTag(tag: string): void {
+    this.activeTag.set(this.activeTag() === tag ? '' : tag);
+    this.selectedId.set(null);
+    this.loadRecentTexts();
   }
 
   private toThreadItem(text: RecentText): ThreadItem {
@@ -205,6 +230,7 @@ export class HomePage implements OnInit {
       title: text.title,
       excerpt: firstWords(text.content, 0, EXCERPT_WORD_COUNT),
       subscribed: text.subscribed,
+      tags: text.tags ?? [],
       content: text.content,
       roundNumber: text.roundNumber,
     };
@@ -219,6 +245,9 @@ export class HomePage implements OnInit {
       // itself until it's selected.
       excerpt: '',
       subscribed: result.subscribed,
+      // The search response carries no tags either; they arrive with the
+      // content when the result is selected.
+      tags: [],
       content: null,
       roundNumber: result.roundNumber,
       score: result.score,
@@ -227,7 +256,8 @@ export class HomePage implements OnInit {
 
   private loadRecentTexts(): void {
     this.hasMoreRecentTexts.set(true);
-    this.textService.listRecent(RECENT_TEXTS_COUNT, 0).subscribe((texts) => {
+    this.recentTexts.set([]);
+    this.textService.listRecent(RECENT_TEXTS_COUNT, 0, this.activeTag()).subscribe((texts) => {
       const items = texts.map((text) => this.toThreadItem(text));
       this.recentTexts.set(items);
       this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);
@@ -244,7 +274,7 @@ export class HomePage implements OnInit {
 
     this.loadingMoreRecentTexts.set(true);
     const offset = this.recentTexts().length;
-    this.textService.listRecent(RECENT_TEXTS_COUNT, offset).subscribe({
+    this.textService.listRecent(RECENT_TEXTS_COUNT, offset, this.activeTag()).subscribe({
       next: (texts) => {
         this.loadingMoreRecentTexts.set(false);
         this.hasMoreRecentTexts.set(texts.length === RECENT_TEXTS_COUNT);
@@ -433,6 +463,7 @@ export class HomePage implements OnInit {
           title: outcome.text.title,
           excerpt: firstWords(outcome.text.content, 0, EXCERPT_WORD_COUNT),
           subscribed: true,
+          tags: outcome.text.tags ?? [],
           content: outcome.text.content,
           // The fork opens the round after the one that just closed, and
           // the response only names the closed one.

@@ -94,7 +94,7 @@ func TestCastVoteSwitchUsesOneRoundTripPerNodeNotPerKey(t *testing.T) {
 	coord := cluster.NewCoordinator(ring, peers)
 	repo := queel.NewRepository(cluster.NewDistributedStore(coord))
 
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

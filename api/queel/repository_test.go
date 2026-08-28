@@ -35,7 +35,7 @@ func TestRecentTextsMostRecentFirstAndLimited(t *testing.T) {
 
 	var ids []string
 	for i := 0; i < 6; i++ {
-		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator")
+		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +67,7 @@ func TestRecentTextsOffsetPaginates(t *testing.T) {
 
 	var ids []string
 	for i := 0; i < 6; i++ {
-		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator")
+		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func TestRecentTextsOffsetPaginates(t *testing.T) {
 // end uses an empty page as its "nothing more to load" signal.
 func TestRecentTextsOffsetPastTheEndIsEmpty(t *testing.T) {
 	repo := newTestRepository(t)
-	if _, err := repo.CreateText("Only one", "content", "creator"); err != nil {
+	if _, err := repo.CreateText("Only one", "content", "creator", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,7 +129,7 @@ func TestRecentTextsOffsetPastTheEndIsEmpty(t *testing.T) {
 func TestRecentTextsExcludesSupersededVersions(t *testing.T) {
 	repo := newTestRepository(t)
 
-	original, err := repo.CreateText("Original", "Nous le peuple francais.", "creator")
+	original, err := repo.CreateText("Original", "Nous le peuple francais.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestRecentTextsExcludesSupersededVersions(t *testing.T) {
 
 	var otherIDs []string
 	for i := 0; i < 3; i++ {
-		text, err := repo.CreateText(fmt.Sprintf("Other %d", i), "content", "creator")
+		text, err := repo.CreateText(fmt.Sprintf("Other %d", i), "content", "creator", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +182,7 @@ func TestRecentTextsExcludesSupersededVersions(t *testing.T) {
 func TestCreateTextOpensAnEmptyFirstRound(t *testing.T) {
 	repo := newTestRepository(t)
 
-	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestCreateTextOpensAnEmptyFirstRound(t *testing.T) {
 func TestCreateTextSubscribesTheAuthor(t *testing.T) {
 	repo := newTestRepository(t)
 
-	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "alice")
+	text, err := repo.CreateText("Constitution", "Nous, le peuple.", "alice", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestCreateTextSubscribesTheAuthor(t *testing.T) {
 func TestProposeEditCreatesSlotWithSeedFragment(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestProposeEditCreatesSlotWithSeedFragment(t *testing.T) {
 func TestProposeEditSameRangeReusesSlot(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestProposeEditSameRangeReusesSlot(t *testing.T) {
 func TestProposeEditDisjointRangesCoexistInSameRound(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare la republique."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestProposeEditDisjointRangesCoexistInSameRound(t *testing.T) {
 func TestProposeEditPartiallyOverlappingRangeRejected(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestProposeEditPartiallyOverlappingRangeRejected(t *testing.T) {
 func TestProposeEditRejectsInvalidRange(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +400,7 @@ func TestProposeEditUnknownText(t *testing.T) {
 func TestProposeEditOnSupersededTextIsRejected(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestProposeEditOnSupersededTextIsRejected(t *testing.T) {
 func TestProposeEditRespectsRuneBoundaries(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Liberté, égalité, fraternité."
-	text, err := repo.CreateText("Devise", content, "creator")
+	text, err := repo.CreateText("Devise", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +468,7 @@ func TestProposeEditRespectsRuneBoundaries(t *testing.T) {
 func TestWinningFragmentDefaultsToSeedWithNoVotes(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +490,7 @@ func TestWinningFragmentDefaultsToSeedWithNoVotes(t *testing.T) {
 func TestWinningFragmentPicksMostVotes(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +519,7 @@ func TestWinningFragmentPicksMostVotes(t *testing.T) {
 func TestCloseRoundSplicesWinnersAndPreservesGaps(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare la republique unie."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +599,7 @@ func TestCloseRoundSplicesWinnersAndPreservesGaps(t *testing.T) {
 func TestCloseRoundMigratesSubscriptionsToTheFork(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,7 +658,7 @@ func TestCloseRoundMigratesSubscriptionsToTheFork(t *testing.T) {
 func TestCloseRoundWithNoSubscribersIsUnaffected(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +687,7 @@ func TestCloseRoundWithNoSubscribersIsUnaffected(t *testing.T) {
 // empty, and closing it would fork a copy saying nothing new.
 func TestCloseRoundEmptyRound(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,7 +702,7 @@ func TestCloseRoundEmptyRound(t *testing.T) {
 func TestCloseRoundNoOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +721,7 @@ func TestCloseRoundNoOpenRound(t *testing.T) {
 
 func TestIsSupersededFalseForANeverClosedText(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -737,7 +737,7 @@ func TestIsSupersededFalseForANeverClosedText(t *testing.T) {
 func TestIsSupersededAfterCloseRound(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,7 +771,7 @@ func TestIsSupersededAfterCloseRound(t *testing.T) {
 
 func TestIsSubscribedFalseUntilSubscribed(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -817,7 +817,7 @@ func TestSubscriptionsForUserListsSubscribedTexts(t *testing.T) {
 
 	var ids []string
 	for i := 0; i < 3; i++ {
-		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator")
+		text, err := repo.CreateText(fmt.Sprintf("Text %d", i), "content", "creator", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -852,7 +852,7 @@ func TestSubscriptionsForUserListsSubscribedTexts(t *testing.T) {
 func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +894,7 @@ func TestScheduleRoundCloseSetsFieldWithoutClosing(t *testing.T) {
 // never close and retry it on every tick.
 func TestScheduleRoundCloseEmptyRound(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +910,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	future := time.Now().Add(7 * 24 * time.Hour)
 
 	// Due: an open round scheduled to close in the past.
-	dueText, err := repo.CreateText("Due", "Contenu du texte du.", "creator")
+	dueText, err := repo.CreateText("Due", "Contenu du texte du.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -923,7 +923,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	}
 
 	// Not due yet: an open round scheduled far in the future.
-	futureText, err := repo.CreateText("Future", "Contenu futur.", "creator")
+	futureText, err := repo.CreateText("Future", "Contenu futur.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -936,7 +936,7 @@ func TestDueScheduledRounds(t *testing.T) {
 	}
 
 	// Never scheduled: an open round with no ScheduledCloseAt at all.
-	unscheduledText, err := repo.CreateText("Unscheduled", "Contenu normal.", "creator")
+	unscheduledText, err := repo.CreateText("Unscheduled", "Contenu normal.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -947,7 +947,7 @@ func TestDueScheduledRounds(t *testing.T) {
 
 	// Already closed: was scheduled in the past, but someone closed it by
 	// hand before the worker got to it — must not show up as due again.
-	closedText, err := repo.CreateText("Closed", "Contenu clos.", "creator")
+	closedText, err := repo.CreateText("Closed", "Contenu clos.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -976,7 +976,7 @@ func TestDueScheduledRounds(t *testing.T) {
 
 func TestTextWithSlotsEmptyFirstRound(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -999,7 +999,7 @@ func TestTextWithSlotsEmptyFirstRound(t *testing.T) {
 func TestTextWithSlotsOpenRound(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1034,7 +1034,7 @@ func TestTextWithSlotsUnknownText(t *testing.T) {
 func TestSecondRoundBuildsOnClosedRoundContent(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1095,7 +1095,7 @@ func TestSecondRoundBuildsOnClosedRoundContent(t *testing.T) {
 // opened" left.
 func TestRoundCountOnAFreshTextIsOne(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple francais declare.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple francais declare.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1123,7 +1123,7 @@ func TestRoundCountOnAFreshTextIsOne(t *testing.T) {
 func TestRoundCountSurvivesAfterTheRoundCloses(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1183,7 +1183,7 @@ func TestRoundCountSurvivesAfterTheRoundCloses(t *testing.T) {
 func TestWinningFragmentTieBreaksOnEarliestProposal(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1217,7 +1217,7 @@ func TestCastVoteUnknownFragment(t *testing.T) {
 func TestDeleteUserVotesRemovesOnlyThatUser(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1270,7 +1270,7 @@ func TestDeleteUserVotesNoVotesIsNoop(t *testing.T) {
 func TestDeleteUserFragmentsRemovesOnlyThatAuthorsFragments(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1362,7 +1362,7 @@ func TestDeleteUserFragmentsNoFragmentsIsNoop(t *testing.T) {
 func TestDeleteUserTextsRemovesEntireVersionChain(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	original, err := repo.CreateText("Constitution", content, "alice")
+	original, err := repo.CreateText("Constitution", content, "alice", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1394,7 +1394,7 @@ func TestDeleteUserTextsRemovesEntireVersionChain(t *testing.T) {
 	}
 
 	// A text alice did NOT create must survive untouched.
-	unrelated, err := repo.CreateText("Autre texte", "Contenu neutre.", "eve")
+	unrelated, err := repo.CreateText("Autre texte", "Contenu neutre.", "eve", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1456,7 +1456,7 @@ func TestDeleteUserTextsNoTextsIsNoop(t *testing.T) {
 func TestDeleteTextRemovesItsRoundsFragmentsAndVotesButNotForksOrOtherTexts(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1474,7 +1474,7 @@ func TestDeleteTextRemovesItsRoundsFragmentsAndVotesButNotForksOrOtherTexts(t *t
 		t.Fatal(err)
 	}
 
-	unrelated, err := repo.CreateText("Autre texte", "Contenu neutre.", "bob")
+	unrelated, err := repo.CreateText("Autre texte", "Contenu neutre.", "bob", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1523,11 +1523,11 @@ func TestDeleteTextUnknownTextIsNotFound(t *testing.T) {
 // those texts must not end up with a subscription pointing at nothing.
 func TestDeleteTextRemovesOtherUsersSubscriptionsToIt(t *testing.T) {
 	repo := newTestRepository(t)
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := repo.CreateText("Autre texte", "Contenu neutre.", "bob")
+	other, err := repo.CreateText("Autre texte", "Contenu neutre.", "bob", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1577,11 +1577,11 @@ func TestDeleteTextRemovesOtherUsersSubscriptionsToIt(t *testing.T) {
 
 func TestDeleteUserSubscriptionsRemovesOnlyThatUsers(t *testing.T) {
 	repo := newTestRepository(t)
-	textA, err := repo.CreateText("Text A", "content", "creator")
+	textA, err := repo.CreateText("Text A", "content", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	textB, err := repo.CreateText("Text B", "content", "creator")
+	textB, err := repo.CreateText("Text B", "content", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1637,11 +1637,11 @@ func TestDeleteUserSubscriptionsNoSubscriptionsIsNoop(t *testing.T) {
 func TestSubscribersForTextListsFollowers(t *testing.T) {
 	repo := newTestRepository(t)
 
-	watched, err := repo.CreateText("Suivi", "content", "creator")
+	watched, err := repo.CreateText("Suivi", "content", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := repo.CreateText("Autre", "content", "creator")
+	other, err := repo.CreateText("Autre", "content", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1678,7 +1678,7 @@ func TestSubscribersForTextListsFollowers(t *testing.T) {
 func TestSubscribersForTextAlwaysIncludesItsCreator(t *testing.T) {
 	repo := newTestRepository(t)
 
-	text, err := repo.CreateText("Personne", "content", "creator")
+	text, err := repo.CreateText("Personne", "content", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1700,7 +1700,7 @@ func TestSubscribersForTextAlwaysIncludesItsCreator(t *testing.T) {
 func TestScheduleRoundCloseRecordsWhoAsked(t *testing.T) {
 	repo := newTestRepository(t)
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

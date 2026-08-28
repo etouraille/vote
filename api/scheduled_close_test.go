@@ -30,7 +30,7 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 	defer engine.Close()
 	repo := queel.NewRepository(engine)
 
-	dueText, err := repo.CreateText("Due", "Contenu a modifier.", "creator")
+	dueText, err := repo.CreateText("Due", "Contenu a modifier.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestRunScheduledCloseWorkerClosesDueRounds(t *testing.T) {
 
 	// A second text scheduled well into the future must be left alone —
 	// the worker shouldn't close everything it sees, only what's due.
-	futureText, err := repo.CreateText("Future", "Autre contenu ici.", "creator")
+	futureText, err := repo.CreateText("Future", "Autre contenu ici.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestRunScheduledCloseWorkerRespectsIsLeader(t *testing.T) {
 	defer engine.Close()
 	repo := queel.NewRepository(engine)
 
-	text, err := repo.CreateText("Due", "Contenu a modifier.", "creator")
+	text, err := repo.CreateText("Due", "Contenu a modifier.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestRunScheduledCloseWorkerInClusterModeOnlyLeaderCloses(t *testing.T) {
 	defer engine.Close()
 	repo := queel.NewRepository(engine)
 
-	text, err := repo.CreateText("Due", "Contenu a modifier.", "creator")
+	text, err := repo.CreateText("Due", "Contenu a modifier.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

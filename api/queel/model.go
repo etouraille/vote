@@ -46,6 +46,15 @@ type Text struct {
 	// CreateText — the root of its version chain.
 	PreviousTextID string `json:"previousTextId,omitempty"`
 
+	// Tags are free-form labels the author gave the text at creation, in
+	// the order they typed them (see ParseTags). Empty rather than nil for
+	// a text with none, so it marshals as [] and a client never has to
+	// tell the two apart.
+	//
+	// Carried forward unchanged to every fork, like Title and CreatedBy: a
+	// round settles wording, not what the text is about.
+	Tags []string `json:"tags"`
+
 	// CreatedBy is whoever originally called CreateText for this version
 	// chain — carried forward unchanged to every text CloseRound forks from
 	// it, regardless of who closed that round. Deleting this user cascades

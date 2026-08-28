@@ -34,6 +34,7 @@ func NewHandler(repo *queel.Repository, jwtSecret []byte) http.Handler {
 
 	mux.HandleFunc("POST /texts", createTextHandler(repo, jwtSecret))
 	mux.HandleFunc("GET /texts", recentTextsHandler(repo))
+	mux.HandleFunc("GET /tags", tagsHandler(repo))
 	mux.HandleFunc("GET /texts/{id}", getTextHandler(repo))
 	mux.HandleFunc("GET /texts/{id}/with-slots", textWithSlotsHandler(repo))
 	mux.HandleFunc("DELETE /texts/{id}", deleteTextHandler(repo, jwtSecret))
@@ -158,6 +159,9 @@ type createTextRequest struct {
 	Title    string `json:"title"`
 	Content  string `json:"content"`
 	AuthorID string `json:"authorId"`
+	// Tags is the author's single "#"-separated line, parsed by
+	// queel.ParseTags so every client files a text under the same labels.
+	Tags string `json:"tags,omitempty"`
 }
 
 func createTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFunc {
@@ -171,7 +175,7 @@ func createTextHandler(repo *queel.Repository, jwtSecret []byte) http.HandlerFun
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		text, err := repo.CreateText(req.Title, req.Content, req.AuthorID)
+		text, err := repo.CreateText(req.Title, req.Content, req.AuthorID, queel.ParseTags(req.Tags))
 		if err != nil {
 			writeRepositoryError(w, err)
 			return
@@ -213,8 +217,20 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 			offset = parsed
 		}
 
-		texts, err := repo.RecentTexts(limit, offset)
-		if err != nil {
+		// ?tag=… narrows the same listing, mirroring the api's own route.
+		var texts []*queel.Text
+		var err error
+		if tag := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("tag"))); tag != "" {
+			if texts, err = repo.TextsByTag(tag); err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if offset >= len(texts) {
+				texts = nil
+			} else if texts = texts[offset:]; len(texts) > limit {
+				texts = texts[:limit]
+			}
+		} else if texts, err = repo.RecentTexts(limit, offset); err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -262,6 +278,19 @@ type recentTextResult struct {
 	*queel.Text
 	RoundNumber int  `json:"roundNumber"`
 	Subscribed  bool `json:"subscribed"`
+}
+
+// tagsHandler lists the labels in use, most used first — mirrors the api's
+// own route. Ungated: which labels exist is not acting on anything.
+func tagsHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tags, err := repo.Tags()
+		if err != nil {
+			writeRepositoryError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, tags)
+	}
 }
 
 func getTextHandler(repo *queel.Repository) http.HandlerFunc {

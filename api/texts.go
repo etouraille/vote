@@ -34,42 +34,47 @@ const (
 type textPayload struct {
 	Title   string `json:"title"`
 	Content string `json:"content"`
+
+	// Tags is the author's single "#"-separated line, kept raw here and
+	// parsed by queel.ParseTags — every client sends the line as typed, so
+	// that none of them can file a text under labels the others wouldn't.
+	Tags string `json:"tags,omitempty"`
 }
 
 type textResponse struct {
 	ID string `json:"id"`
 }
 
-// decodeTextPayload reads and validates a {title, content} body shared by
-// create and update, writing the appropriate error response itself when
-// invalid. ok reports whether the caller should proceed.
-func decodeTextPayload(w http.ResponseWriter, r *http.Request) (title, content string, ok bool) {
+// decodeTextPayload reads and validates a {title, content, tags} body,
+// writing the appropriate error response itself when invalid. ok reports
+// whether the caller should proceed.
+func decodeTextPayload(w http.ResponseWriter, r *http.Request) (title, content string, tags []string, ok bool) {
 	var req textPayload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
 			writeError(w, http.StatusRequestEntityTooLarge, "corps de requête trop volumineux")
-			return "", "", false
+			return "", "", nil, false
 		}
 		writeError(w, http.StatusBadRequest, "corps de requête invalide")
-		return "", "", false
+		return "", "", nil, false
 	}
 
 	title = strings.TrimSpace(req.Title)
 	if title == "" {
 		writeError(w, http.StatusBadRequest, "le titre est obligatoire")
-		return "", "", false
+		return "", "", nil, false
 	}
 	if utf8.RuneCountInString(title) > maxTitleRunes {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("le titre ne doit pas dépasser %d caractères", maxTitleRunes))
-		return "", "", false
+		return "", "", nil, false
 	}
 	if utf8.RuneCountInString(req.Content) > maxContentRunes {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("le contenu ne doit pas dépasser %d caractères", maxContentRunes))
-		return "", "", false
+		return "", "", nil, false
 	}
 
-	return title, req.Content, true
+	return title, req.Content, queel.ParseTags(req.Tags), true
 }
 
 // createTextHandler creates a text and (best-effort) indexes it into the
@@ -86,12 +91,12 @@ func createTextHandler(repo *queel.Repository, index *searchIndexer) http.Handle
 			return
 		}
 
-		title, content, ok := decodeTextPayload(w, r)
+		title, content, tags, ok := decodeTextPayload(w, r)
 		if !ok {
 			return
 		}
 
-		text, err := repo.CreateText(title, content, claims.Subject)
+		text, err := repo.CreateText(title, content, claims.Subject, tags)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
@@ -115,6 +120,8 @@ type recentTextResult struct {
 	Finalized bool      `json:"finalized"`
 	CreatedAt time.Time `json:"createdAt"`
 
+	Tags []string `json:"tags"`
+
 	// RoundNumber is which round is currently open on this text — the same
 	// count SearchResult carries, so both listings can label a text with
 	// where it stands. Never 0 for a text created since rounds began
@@ -122,6 +129,33 @@ type recentTextResult struct {
 	RoundNumber int `json:"roundNumber"`
 
 	Subscribed bool `json:"subscribed"`
+}
+
+// paginate applies limit/offset to a list already in hand. TextsByTag
+// answers with everything carrying a label — a set small enough to hold,
+// and one the store cannot page through itself.
+func paginate(texts []*queel.Text, limit, offset int) []*queel.Text {
+	if offset >= len(texts) {
+		return nil
+	}
+	texts = texts[offset:]
+	if len(texts) > limit {
+		texts = texts[:limit]
+	}
+	return texts
+}
+
+// tagsHandler lists the labels in use, most used first — what a filter
+// offers to choose from.
+func tagsHandler(repo *queel.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tags, err := repo.Tags()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+		writeJSON(w, http.StatusOK, tags)
+	}
 }
 
 // recentTextsHandler lists the most recently created texts — for the home
@@ -157,8 +191,20 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 			offset = parsed
 		}
 
-		texts, err := repo.RecentTexts(limit, offset)
-		if err != nil {
+		var err error
+
+		// ?tag=… narrows the same listing rather than opening a second
+		// route: the caller wants the recent texts, filtered — the shape of
+		// the answer, and everything decorating it below, is identical.
+		var texts []*queel.Text
+		if tag := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("tag"))); tag != "" {
+			texts, err = repo.TextsByTag(tag)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "erreur serveur")
+				return
+			}
+			texts = paginate(texts, limit, offset)
+		} else if texts, err = repo.RecentTexts(limit, offset); err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
@@ -185,6 +231,7 @@ func recentTextsHandler(repo *queel.Repository) http.HandlerFunc {
 				Content:     text.Content,
 				Finalized:   text.Finalized,
 				CreatedAt:   text.CreatedAt,
+				Tags:        text.Tags,
 				RoundNumber: roundNumber,
 				Subscribed:  subscribed,
 			})

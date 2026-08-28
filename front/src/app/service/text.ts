@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from '../api-base-url';
@@ -10,6 +10,7 @@ import {
   RecentText,
   SearchResult,
   SubscribedText,
+  TagCount,
   Text,
   TextWithSlots,
 } from '../model/text.model';
@@ -18,8 +19,14 @@ import {
 export class TextService {
   private readonly http = inject(HttpClient);
 
-  create(title: string, content: string): Observable<CreateTextResponse> {
-    return this.http.post<CreateTextResponse>(`${API_BASE_URL}/api/texts`, { title, content });
+  // tags is the author's line as typed, "#"-separated. Sent raw: the api
+  // parses it, so every client files a text under the same labels.
+  create(title: string, content: string, tags = ''): Observable<CreateTextResponse> {
+    return this.http.post<CreateTextResponse>(`${API_BASE_URL}/api/texts`, {
+      title,
+      content,
+      tags,
+    });
   }
 
   get(id: string): Observable<Text> {
@@ -29,8 +36,18 @@ export class TextService {
   // The most recently created texts, newest first — for the home page's
   // "latest texts" cards. offset paginates for infinite scroll: each call
   // asks for the next `limit` texts after however many are already loaded.
-  listRecent(limit: number, offset = 0): Observable<RecentText[]> {
-    return this.http.get<RecentText[]>(`${API_BASE_URL}/api/texts`, { params: { limit, offset } });
+  //
+  // tag narrows the same listing rather than calling elsewhere: the caller
+  // wants the recent texts, filtered, and the answer has the same shape.
+  listRecent(limit: number, offset = 0, tag = ''): Observable<RecentText[]> {
+    let params = new HttpParams().set('limit', limit).set('offset', offset);
+    if (tag !== '') params = params.set('tag', tag);
+    return this.http.get<RecentText[]>(`${API_BASE_URL}/api/texts`, { params });
+  }
+
+  // The labels in use, most used first — what the filter offers.
+  tags(): Observable<TagCount[]> {
+    return this.http.get<TagCount[]>(`${API_BASE_URL}/api/tags`);
   }
 
   // Text + the slots of its current round, if any — one call instead of

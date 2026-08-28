@@ -28,7 +28,7 @@ func TestDeleteTextHandlerRemovesText(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	text, err := repo.CreateText("Titre", "Contenu", "author-1")
+	text, err := repo.CreateText("Titre", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestScheduleCloseHandlerSchedulesTheOpenRound(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	text, err := repo.CreateText("Titre", "Contenu du texte", "author-1")
+	text, err := repo.CreateText("Titre", "Contenu du texte", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestScheduleCloseHandlerRejectsOutOfRangeDays(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	text, err := repo.CreateText("Titre", "Contenu du texte", "author-1")
+	text, err := repo.CreateText("Titre", "Contenu du texte", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestSubscribeHandlerSubscribesTheGivenUser(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	text, err := repo.CreateText("Titre", "Contenu", "author-1")
+	text, err := repo.CreateText("Titre", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,17 +163,17 @@ func TestSubscriptionsHandlerListsFollowedTitles(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	first, err := repo.CreateText("Premier", "Contenu", "author-1")
+	first, err := repo.CreateText("Premier", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := repo.CreateText("Second", "Contenu", "author-1")
+	second, err := repo.CreateText("Second", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A third text nobody follows, to prove the listing is per-user and
 	// not just "every text there is".
-	if _, err := repo.CreateText("Ignoré", "Contenu", "author-1"); err != nil {
+	if _, err := repo.CreateText("Ignoré", "Contenu", "author-1", nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{first.ID, second.ID} {
@@ -227,11 +227,11 @@ func TestSubscriptionsHandlerSkipsDeletedTexts(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	kept, err := repo.CreateText("Toujours là", "Contenu", "author-1")
+	kept, err := repo.CreateText("Toujours là", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	removed, err := repo.CreateText("Supprimé", "Contenu", "author-1")
+	removed, err := repo.CreateText("Supprimé", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestSubscribeHandlerRequiresSubscribePermission(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, testSecret)
 
-	text, err := repo.CreateText("Titre", "Contenu", "author-1")
+	text, err := repo.CreateText("Titre", "Contenu", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestUserVotesHandlerReportsEachSlotsCurrentChoice(t *testing.T) {
 	handler := NewHandler(repo, nil)
 
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "author-1")
+	text, err := repo.CreateText("Constitution", content, "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestHistoryHandlerWalksTheWholeChain(t *testing.T) {
 	handler := NewHandler(repo, nil)
 
 	content := "Nous le peuple francais declare."
-	original, err := repo.CreateText("Constitution", content, "author-1")
+	original, err := repo.CreateText("Constitution", content, "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +461,7 @@ func TestRecentTextsHandlerDecoratesEachText(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, nil)
 
-	text, err := repo.CreateText("Constitution", "Nous le peuple.", "author-1")
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +515,7 @@ func TestProposeEditRequiresSubscription(t *testing.T) {
 	handler := NewHandler(repo, nil)
 
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "author-1")
+	text, err := repo.CreateText("Constitution", content, "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +565,7 @@ func TestProposeEditIsOneRightWhicheverZone(t *testing.T) {
 	repo := newTestRepo(t)
 	handler := NewHandler(repo, testSecret)
 
-	text, err := repo.CreateText("Constitution", content, "author-1")
+	text, err := repo.CreateText("Constitution", content, "author-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

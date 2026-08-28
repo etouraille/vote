@@ -64,7 +64,7 @@ func TestKeepLatestRoundDropsSupersededTexts(t *testing.T) {
 	repo := queel.NewRepository(engine)
 
 	content := "Nous le peuple francais declare."
-	text, err := repo.CreateText("Constitution", content, "creator")
+	text, err := repo.CreateText("Constitution", content, "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestKeepLatestRoundDropsSupersededTexts(t *testing.T) {
 	}
 
 	// A text nobody has ever closed a round on is current, not superseded.
-	fresh, err := repo.CreateText("Autre", "Un autre contenu.", "creator")
+	fresh, err := repo.CreateText("Autre", "Un autre contenu.", "creator", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

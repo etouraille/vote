@@ -11,6 +11,17 @@
            however long it runs. -->
       <header class="shrink-0 border-b border-slate-200 px-6 py-4">
         <h1 class="text-lg font-semibold text-slate-900">{{ item.title }}</h1>
+        <!-- Under the title, where a subtitle would be: labels say what the
+             text is about, which is read before the text itself. -->
+        @if (item.tags.length > 0) {
+          <p class="mt-1.5 flex flex-wrap gap-1.5">
+            @for (tag of item.tags; track tag) {
+              <span class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600"
+                >#{{ tag }}</span
+              >
+            }
+          </p>
+        }
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
@@ -253,6 +264,28 @@
         <p class="mt-2 text-xs text-red-600">{{ error }}</p>
       }
 
+      <!-- Above the thread it narrows, and only while there is a choice to
+           make: a single label on offer filters nothing. -->
+      @if (tags().length > 0 && !searchResults()) {
+        <div class="mt-2 flex flex-wrap gap-1">
+          @for (tag of tags(); track tag.tag) {
+            <button
+              type="button"
+              (click)="filterByTag(tag.tag)"
+              class="rounded px-1.5 py-0.5 text-xs"
+              [class.bg-slate-200]="activeTag() !== tag.tag"
+              [class.text-slate-700]="activeTag() !== tag.tag"
+              [class.bg-slate-900]="activeTag() === tag.tag"
+              [class.text-white]="activeTag() === tag.tag"
+              [attr.aria-pressed]="activeTag() === tag.tag"
+            >
+              #{{ tag.tag }}
+              <span class="opacity-60">{{ tag.count }}</span>
+            </button>
+          }
+        </div>
+      }
+
       <!-- Only while a search is showing: without it the thread would be
            stuck on the results with no way back to the latest texts. -->
       @if (searchResults(); as results) {
@@ -311,6 +344,8 @@
         <p class="p-4 text-center text-xs text-slate-400">
           @if (searchResults()) {
             Aucun résultat.
+          } @else if (activeTag()) {
+            Aucun texte sous #{{ activeTag() }}.
           } @else {
             Aucun texte pour le moment.
           }
