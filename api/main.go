@@ -240,7 +240,7 @@ func main() {
 	// what push delivered at the moment it happened, readable afterwards.
 	// Under /api/me/... like devices and subscriptions — every one of them
 	// takes its owner from the bearer token, never from the path.
-	mux.HandleFunc("GET /api/me/notifications", listNotificationsHandler(store))
+	mux.HandleFunc("GET /api/me/notifications", listNotificationsHandler(store, textRepo))
 	mux.HandleFunc("PUT /api/me/notifications/{id}/read", setNotificationReadHandler(store))
 	mux.HandleFunc("POST /api/me/notifications/read-all", markAllNotificationsReadHandler(store))
 	mux.HandleFunc("GET /api/fragments/{id}", getFragmentHandler(textRepo))

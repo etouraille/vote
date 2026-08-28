@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/etouraille/queel"
 	"github.com/lib/pq"
 )
 
@@ -17,6 +18,16 @@ import (
 const (
 	defaultNotificationLimit = 50
 	maxNotificationLimit     = 200
+
+	// latestRoundOverfetch is how much wider than the requested page the
+	// listing reads, to leave room for what keepLatestRound removes. A
+	// reader whose inbox is mostly about superseded versions would
+	// otherwise get a page far shorter than they asked for.
+	//
+	// A multiplier and not a loop: this is a reading list, not a
+	// guarantee, and one over-wide read beats an unbounded chase after
+	// exactly `limit` rows.
+	latestRoundOverfetch = 3
 )
 
 // storedNotification is one row of the inbox as clients see it. read is a
@@ -74,14 +85,31 @@ func (s *Store) ListNotifications(ctx context.Context, userID string, limit int)
 	return notifications, rows.Err()
 }
 
-// UnreadNotificationCount counts what a badge would show. Returned with
-// every listing so a client never has to ask twice, and counted over the
-// whole inbox rather than the page just returned.
-func (s *Store) UnreadNotificationCount(ctx context.Context, userID string) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL`, userID).Scan(&count)
-	return count, err
+// UnreadNotificationTexts returns the text each unread notification is
+// about, one entry per notification — the empty string for one that
+// concerns no text in particular.
+//
+// The ids rather than a count, because what a badge should show is decided
+// after the same filter the listing applies (see keepLatestRound). Counting
+// in SQL would count rows the list then hides, and the badge would promise
+// notifications nobody can find.
+func (s *Store) UnreadNotificationTexts(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT coalesce(text_id, '') FROM notifications WHERE user_id = $1 AND read_at IS NULL`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	textIDs := make([]string, 0)
+	for rows.Next() {
+		var textID string
+		if err := rows.Scan(&textID); err != nil {
+			return nil, err
+		}
+		textIDs = append(textIDs, textID)
+	}
+	return textIDs, rows.Err()
 }
 
 // SetNotificationRead marks one notification read or unread, scoped to its
@@ -122,7 +150,36 @@ type notificationsResponse struct {
 // listNotificationsHandler returns the caller's inbox plus the unread
 // count, in one call — a client showing a list almost always shows a badge
 // beside it, and splitting them would guarantee the two disagree.
-func listNotificationsHandler(store *Store) http.HandlerFunc {
+// keepLatestRound drops the notifications that concern a version of a text
+// a later round has already superseded.
+//
+// Each version of a text carries exactly one round, and closing it forks a
+// new version with a new id (see queel's CloseRound). "The latest round of
+// a text" is therefore "the version nothing has superseded" — no round
+// number has to be recorded anywhere for this, the fork chain already says
+// it.
+//
+// One lookup per distinct text rather than per notification: an inbox is
+// usually several events about a handful of texts.
+//
+// Notifications about no text at all are kept: there is no round for them
+// to be behind.
+func keepLatestRound(repo *queel.Repository, textIDs []string) (map[string]bool, error) {
+	current := make(map[string]bool, len(textIDs))
+	for _, textID := range textIDs {
+		if textID == "" || current[textID] {
+			continue
+		}
+		superseded, err := repo.IsSuperseded(textID)
+		if err != nil {
+			return nil, err
+		}
+		current[textID] = !superseded
+	}
+	return current, nil
+}
+
+func listNotificationsHandler(store *Store, repo *queel.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsFromContext(r)
 		if !ok {
@@ -140,17 +197,55 @@ func listNotificationsHandler(store *Store) http.HandlerFunc {
 			limit = min(parsed, maxNotificationLimit)
 		}
 
-		notifications, err := store.ListNotifications(r.Context(), claims.Subject, limit)
+		// Asked for more than will be shown: what the filter below drops
+		// would otherwise leave the page short of the limit for no reason
+		// the reader can see.
+		stored, err := store.ListNotifications(r.Context(), claims.Subject, limit*latestRoundOverfetch)
 		if err != nil {
 			log.Printf("listing notifications for %s: %v", claims.Subject, err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
-		unread, err := store.UnreadNotificationCount(r.Context(), claims.Subject)
+
+		unreadTexts, err := store.UnreadNotificationTexts(r.Context(), claims.Subject)
 		if err != nil {
 			log.Printf("counting unread notifications for %s: %v", claims.Subject, err)
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
+		}
+
+		textIDs := make([]string, 0, len(stored)+len(unreadTexts))
+		for _, notification := range stored {
+			textIDs = append(textIDs, notification.TextID)
+		}
+		textIDs = append(textIDs, unreadTexts...)
+
+		current, err := keepLatestRound(repo, textIDs)
+		if err != nil {
+			log.Printf("resolving the current version of a notified text for %s: %v", claims.Subject, err)
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+
+		// Never nil: an empty inbox has to marshal as [] rather than null.
+		notifications := make([]storedNotification, 0, len(stored))
+		for _, notification := range stored {
+			if notification.TextID != "" && !current[notification.TextID] {
+				continue
+			}
+			if len(notifications) == limit {
+				break
+			}
+			notifications = append(notifications, notification)
+		}
+
+		// Counted after the same filter, or the badge would promise
+		// notifications the list cannot show.
+		unread := 0
+		for _, textID := range unreadTexts {
+			if textID == "" || current[textID] {
+				unread++
+			}
 		}
 
 		writeJSON(w, http.StatusOK, notificationsResponse{Notifications: notifications, Unread: unread})
