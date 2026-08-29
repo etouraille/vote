@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
+import '../../../subscriptions/subscription_changes.dart';
 import '../../../subscriptions/data/datasources/subscription_api.dart';
 import '../../data/datasources/article_api.dart';
 import '../../data/models/text_detail.dart';
@@ -39,7 +40,23 @@ class _TextDetailPageState extends State<TextDetailPage> {
   @override
   void initState() {
     super.initState();
+    SubscriptionChanges.last.addListener(_onSubscriptionChange);
     _load();
+  }
+
+  @override
+  void dispose() {
+    SubscriptionChanges.last.removeListener(_onSubscriptionChange);
+    super.dispose();
+  }
+
+  /// Leaving a text happens on "Mes abonnements", which can sit on top of
+  /// this page: without this, coming back showed the Abonné mark on a text
+  /// the reader had just left, and offered no way to say otherwise.
+  void _onSubscriptionChange() {
+    final change = SubscriptionChanges.last.value;
+    if (change == null || change.textId != widget.textId) return;
+    setState(() => _subscribed = change.following);
   }
 
   Future<void> _load() async {
@@ -111,8 +128,9 @@ class _TextDetailPageState extends State<TextDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Already following: a marker, not a control — there is no
-                // unsubscribe route to offer.
+                // Already following: a marker, not a control. Leaving is
+                // offered on "Mes abonnements", where the confirmation has
+                // the whole list as its context rather than one text.
                 if (_subscribed ?? false) ...[
                   const Row(
                     children: [
