@@ -237,6 +237,27 @@ export class HomePage implements OnInit {
     this.loadRecentTexts();
   }
 
+  // Emptying the field puts the whole list back, without waiting for a
+  // keypress nobody would think to make: deleting what you typed is how
+  // you say "no filter", and leaving the thread narrowed after it would
+  // show a restriction the screen no longer displays.
+  //
+  // Only on empty. Reloading on every keystroke would spend a request per
+  // letter to show a list nobody is reading yet.
+  onTagLineChange(line: string): void {
+    const wasFiltering = this.tagLine().trim() !== '';
+    this.tagLine.set(line);
+    if (wasFiltering && line.trim() === '') this.applyTagFilter();
+  }
+
+  // Same for the search box: clearing it takes the results panel down and
+  // gives the thread back, rather than leaving results standing over a
+  // query that is no longer there.
+  onSearchQueryChange(query: string): void {
+    this.searchQuery = query;
+    if (query.trim() === '' && this.searchResults() !== null) this.clearSearch();
+  }
+
   // Accents folded away, so typing "ecolo" finds "écologie". Labels keep
   // theirs — they are what gets stored and shown — and only the comparison
   // drops them: nobody reaches for the accented key while filtering, and a
@@ -272,9 +293,14 @@ export class HomePage implements OnInit {
     const current = HomePage.fold(onSeparator ? '' : (words.at(-1) ?? ''));
     const already = new Set(words.slice(0, words.length - (onSeparator ? 0 : 1)));
 
+    // Nothing while no word is being typed. An empty field would otherwise
+    // drop a list of labels over the thread the moment it takes focus,
+    // which is the browsing list this replaced, back by another route.
+    if (current === '') return [];
+
     return this.tags()
       .filter((tag) => !already.has(tag.tag))
-      .filter((tag) => current === '' || HomePage.fold(tag.tag).includes(current))
+      .filter((tag) => HomePage.fold(tag.tag).includes(current))
       .sort((a, b) => {
         const aStarts = HomePage.fold(a.tag).startsWith(current);
         const bStarts = HomePage.fold(b.tag).startsWith(current);
@@ -386,6 +412,10 @@ export class HomePage implements OnInit {
         this.patchItem(item.textId, {
           content: text.content,
           excerpt: firstWords(text.content, 0, EXCERPT_WORD_COUNT),
+          // Tags come with the text, not with the search response — a
+          // result opened from a search would otherwise show none, though
+          // the reading pane is exactly where they belong.
+          tags: text.tags ?? [],
         });
       },
       error: () => {

@@ -247,7 +247,8 @@
           id="search-query"
           type="search"
           name="search"
-          [(ngModel)]="searchQuery"
+          [ngModel]="searchQuery"
+          (ngModelChange)="onSearchQueryChange($event)"
           placeholder="Rechercher un texte…"
           class="block w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
         />
@@ -274,7 +275,7 @@
             id="tag-filter"
             type="text"
             [ngModel]="tagLine()"
-            (ngModelChange)="tagLine.set($event)"
+            (ngModelChange)="onTagLineChange($event)"
             (keyup.enter)="applyTagFilter()"
             name="tagFilter"
             placeholder="Filtrer par étiquettes : loi #vote"
@@ -348,6 +349,18 @@
               <span class="shrink-0 text-emerald-600" title="Abonné" aria-label="Abonné">●</span>
             }
           </span>
+
+          <!-- Directly under the title, ahead of the round and the excerpt:
+               what a text is about is what one scans a list for. -->
+          @if (item.tags.length > 0) {
+            <span class="mt-1 flex flex-wrap gap-1">
+              @for (tag of item.tags; track tag) {
+                <span class="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600"
+                  >#{{ tag }}</span
+                >
+              }
+            </span>
+          }
 
           @if (item.roundNumber) {
             <span
