@@ -1,5 +1,6 @@
 import '../../../../core/api/api_client.dart';
 import '../../../../core/api/endpoints.dart';
+import '../../subscription_changes.dart';
 import '../models/subscribed_text.dart';
 
 class SubscriptionApi {
@@ -10,6 +11,10 @@ class SubscriptionApi {
   /// has to check first.
   static Future<void> subscribe(String textId) async {
     await ApiClient.post(Endpoints.subscribe(textId), {});
+    // Announced here rather than by each caller: a screen that changes a
+    // subscription and forgets to say so is exactly how the other screens
+    // went stale.
+    SubscriptionChanges.record(textId, following: true);
   }
 
   /// Stops following [textId].
@@ -21,6 +26,7 @@ class SubscriptionApi {
   /// Idempotent — leaving a text you no longer follow succeeds.
   static Future<void> unsubscribe(String textId) async {
     await ApiClient.delete(Endpoints.subscribe(textId), {});
+    SubscriptionChanges.record(textId, following: false);
   }
 
   /// Whether the caller may follow a text at all — root implies it,

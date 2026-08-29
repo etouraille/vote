@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
+import '../../../subscriptions/subscription_changes.dart';
 import 'text_detail_page.dart';
 import '../../data/datasources/article_api.dart';
 import '../../data/models/article.dart';
@@ -62,6 +63,7 @@ class _ArticlesPageState extends State<ArticlesPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    SubscriptionChanges.last.addListener(_onSubscriptionChange);
     _load();
     _loadTags();
   }
@@ -184,8 +186,26 @@ class _ArticlesPageState extends State<ArticlesPage> {
     _applyFilter();
   }
 
+  /// Follows the mark, wherever the change was made — the text's own page,
+  /// or "Mes abonnements" two screens up. Patched in place rather than
+  /// reloaded: the row is already here and only its mark is wrong.
+  void _onSubscriptionChange() {
+    final change = SubscriptionChanges.last.value;
+    final articles = _articles;
+    if (change == null || articles == null) return;
+    if (!articles.any((article) => article.id == change.textId)) return;
+
+    setState(() {
+      _articles = [
+        for (final article in articles)
+          article.id == change.textId ? article.withSubscribed(change.following) : article,
+      ];
+    });
+  }
+
   @override
   void dispose() {
+    SubscriptionChanges.last.removeListener(_onSubscriptionChange);
     _typedFocus.dispose();
     _typed.dispose();
     _scroll.dispose();
@@ -238,13 +258,13 @@ class _ArticlesPageState extends State<ArticlesPage> {
     }
   }
 
-  Future<void> _open(Article article) async {
-    await Navigator.of(context).push(
+  /// Nothing to do on the way back: following the text there is announced
+  /// by SubscriptionChanges, which repaints the row without re-fetching the
+  /// page it sits on.
+  void _open(Article article) {
+    Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => TextDetailPage(textId: article.id)),
     );
-    // Coming back from the article: following it there must show here too,
-    // and the flag rides on the listing rather than on this page's state.
-    if (mounted) await _load();
   }
 
   /// The field to cross labels in, shown above the list rather than on a

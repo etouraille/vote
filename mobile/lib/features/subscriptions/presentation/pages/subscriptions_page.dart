@@ -7,6 +7,7 @@ import '../../../articles/presentation/pages/text_detail_page.dart';
 import '../../../vote/presentation/pages/vote_page.dart';
 import '../../data/datasources/subscription_api.dart';
 import '../../data/models/subscribed_text.dart';
+import '../../subscription_changes.dart';
 
 /// The texts the signed-in user follows, listed by title. Reached from the
 /// overflow menu on any screen; tapping an entry opens the same
@@ -29,7 +30,29 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   @override
   void initState() {
     super.initState();
+    SubscriptionChanges.last.addListener(_onSubscriptionChange);
     _load();
+  }
+
+  @override
+  void dispose() {
+    SubscriptionChanges.last.removeListener(_onSubscriptionChange);
+    super.dispose();
+  }
+
+  /// This list is what you follow, so a text left on its own page has to
+  /// leave here too — the same staleness as the mark on the article list,
+  /// mirrored. A text newly followed needs its title and the rest, which
+  /// only the api has, hence a reload there and a plain removal here.
+  void _onSubscriptionChange() {
+    final change = SubscriptionChanges.last.value;
+    if (change == null || _texts == null) return;
+
+    if (change.following) {
+      _load();
+      return;
+    }
+    setState(() => _texts = _texts?.where((item) => item.id != change.textId).toList());
   }
 
   Future<void> _load() async {
@@ -66,8 +89,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
 
     setState(() => _leaving = text.id);
     try {
+      // The row goes when SubscriptionChanges says so, not here: one rule
+      // for leaving the list, whichever screen the leaving happened on.
       await SubscriptionApi.unsubscribe(text.id);
-      if (mounted) setState(() => _texts = _texts?.where((item) => item.id != text.id).toList());
     } on ApiException catch (e) {
       _showMessage(e.message);
     } catch (_) {

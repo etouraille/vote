@@ -33,4 +33,16 @@ class Article {
   final bool subscribed;
 
   final DateTime createdAt;
+
+  /// The same article, followed or not.
+  ///
+  /// For a list that learns of a change made on another screen: repainting
+  /// one mark is not worth re-fetching the page it sits on.
+  Article withSubscribed(bool value) => Article(
+        id: id,
+        title: title,
+        tags: tags,
+        subscribed: value,
+        createdAt: createdAt,
+      );
 }
