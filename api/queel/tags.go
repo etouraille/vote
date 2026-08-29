@@ -42,6 +42,35 @@ const (
 // Anything past MaxTags is dropped, and a label longer than MaxTagRunes is
 // cut rather than refused: a mis-typed line is not worth failing a text
 // creation over.
+// FoldTag is the form two labels are compared in when accents must not
+// stand in the way: lower-cased, with the accents of French dropped.
+//
+// Labels keep their accents — they are what gets stored and displayed —
+// and only the comparison forgets them. Nobody reaches for the accented
+// key while filtering, and a filter that demands it refuses the one label
+// the reader is looking at.
+//
+// An explicit table rather than Unicode normalisation: the standard
+// library has none, pulling in golang.org/x/text for a filter would be a
+// dependency out of proportion, and the set that matters here is closed
+// and small.
+func FoldTag(tag string) string {
+	const accented = "àáâäãåçèéêëìíîïñòóôöõùúûüýÿœæ"
+	const plain = "aaaaaaceeeeiiiinooooouuuuyyoa"
+
+	folded := make([]rune, 0, len(tag))
+	plainRunes := []rune(plain)
+	for _, r := range strings.ToLower(tag) {
+		if i := strings.IndexRune(accented, r); i != -1 {
+			// IndexRune counts bytes; the table is indexed by rune.
+			folded = append(folded, plainRunes[len([]rune(accented[:i]))])
+			continue
+		}
+		folded = append(folded, r)
+	}
+	return string(folded)
+}
+
 func isTagSeparator(r rune) bool {
 	return r == '#' || r == ',' || r == ';' || unicode.IsSpace(r)
 }

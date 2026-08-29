@@ -238,3 +238,51 @@ func TestParseTagsIsTheOneRuleForQueries(t *testing.T) {
 		}
 	}
 }
+
+// TestTextsByTagsIgnoresMissingAccents is the case a reader actually hits:
+// the completion suggests "#heroïne" while they type "heroine", so the
+// filter has to find it on the same terms the completion offered it.
+// Before this, the suggestion appeared and the filter returned nothing.
+func TestTextsByTagsIgnoresMissingAccents(t *testing.T) {
+	engine, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	repo := NewRepository(engine)
+
+	text, err := repo.CreateText("Sujet", "Contenu.", "creator", ParseTags("#heroïne #écologie"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, query := range []string{"heroïne", "heroine", "HEROINE", "#heroine"} {
+		found, err := repo.TextsByTags(ParseTags(query))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(found) != 1 || found[0].ID != text.ID {
+			t.Fatalf("%q matched %v, want the text carrying #heroïne", query, found)
+		}
+	}
+
+	// The label keeps its accents: only the comparison drops them.
+	if found, _ := repo.TextsByTags(ParseTags("heroine")); found[0].Tags[0] != "heroïne" {
+		t.Fatalf("stored label = %q, want it unchanged", found[0].Tags[0])
+	}
+
+	// Crossing works the same on the labels that are not the first.
+	found, err := repo.TextsByTags(ParseTags("heroine ecologie"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("crossing two unaccented labels matched %v, want the text", found)
+	}
+
+	// A label nobody uses still matches nothing, rather than folding into
+	// some other label that happens to be close.
+	if none, _ := repo.TextsByTags(ParseTags("inexistant")); len(none) != 0 {
+		t.Fatalf("an unknown label matched %v, want none", none)
+	}
+}

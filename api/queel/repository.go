@@ -873,6 +873,18 @@ func (r *Repository) TextsByTags(tags []string) ([]*Text, error) {
 		return nil, nil
 	}
 
+	// Resolved before scanning, so a label typed without its accents finds
+	// the one that carries them — what the completion already promises.
+	resolved := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		stored, err := r.resolveTag(tag)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, stored)
+	}
+	tags = resolved
+
 	kvs, err := r.store.Scan(tagIndexPrefix(tags[0]))
 	if err != nil {
 		return nil, err
@@ -905,6 +917,40 @@ func (r *Repository) TextsByTags(tags []string) ([]*Text, error) {
 
 	sort.Slice(texts, func(i, j int) bool { return texts[i].CreatedAt.After(texts[j].CreatedAt) })
 	return texts, nil
+}
+
+// resolveTag returns the stored label a query refers to, which is the
+// query itself whenever it exists as typed.
+//
+// Only when it doesn't does this fall back to comparing without accents,
+// against every label in use. The common case — a label chosen from the
+// completion, which inserts it exactly — costs one prefix scan and no
+// more; the accent-blind pass is the price of the case that would
+// otherwise find nothing at all.
+//
+// An unknown label is returned unchanged, so it matches nothing rather
+// than silently widening to something else.
+func (r *Repository) resolveTag(tag string) (string, error) {
+	kvs, err := r.store.Scan(tagIndexPrefix(tag))
+	if err != nil {
+		return "", err
+	}
+	if len(kvs) > 0 {
+		return tag, nil
+	}
+
+	folded := FoldTag(tag)
+	all, err := r.store.Scan(allTagsPrefix())
+	if err != nil {
+		return "", err
+	}
+	for _, kv := range all {
+		stored, _, found := strings.Cut(strings.TrimPrefix(string(kv.Key), string(allTagsPrefix())), "/")
+		if found && FoldTag(stored) == folded {
+			return stored, nil
+		}
+	}
+	return tag, nil
 }
 
 // carriesAll reports whether a text bears every one of tags. Linear over a
