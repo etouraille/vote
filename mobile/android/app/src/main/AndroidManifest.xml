@@ -5,7 +5,7 @@
          real network calls, not just the dev tooling. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="mobile"
+        android:label="Queel"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
