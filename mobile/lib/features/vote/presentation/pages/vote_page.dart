@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../app/theme/colors.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../data/datasources/vote_api.dart';
@@ -250,8 +251,8 @@ class _VotePageState extends State<VotePage> {
                     // would say the opposite of the highlight.
                     ? _chosenStyle
                     : TextStyle(
-                        backgroundColor: Colors.red.shade100,
-                        color: Colors.red.shade900,
+                        backgroundColor: AppColors.removed.withValues(alpha: .15),
+                        color: AppColors.removed,
                         decoration: TextDecoration.lineThrough,
                       ),
               ),
@@ -295,8 +296,8 @@ class _VotePageState extends State<VotePage> {
                 style: _votedFor(group, fragment.id)
                     ? _chosenStyle
                     : TextStyle(
-                        backgroundColor: Colors.green.shade100,
-                        color: Colors.green.shade900,
+                        backgroundColor: AppColors.settled.withValues(alpha: .18),
+                        color: AppColors.settled,
                       ),
                 recognizer: _canVote ? _recognizerFor(group, fragment) : null,
               ),
@@ -319,7 +320,7 @@ class _VotePageState extends State<VotePage> {
   Widget _body() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error case final error?) {
-      return Center(child: Text(error, style: const TextStyle(color: Colors.red)));
+      return Center(child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)));
     }
     if (_groups.isEmpty) {
       return const Center(
@@ -360,13 +361,16 @@ class _VotePageState extends State<VotePage> {
                 child: Text(
                   '« ${group.original} » : vote enregistré pour '
                   '${votedId == group.seedFragmentId ? 'le texte original' : 'la modification'}.',
-                  style: TextStyle(color: Colors.green.shade800),
+                  style: const TextStyle(color: AppColors.settled),
                 ),
               ),
             if (group.error case final error?)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text('« ${group.original} » : $error', style: const TextStyle(color: Colors.red)),
+                child: Text(
+                  '« ${group.original} » : $error',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
           ],
         ],

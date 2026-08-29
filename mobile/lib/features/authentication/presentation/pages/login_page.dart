@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../../app/router.dart';
+import '../../../../app/theme/colors.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../notifications/notification_service.dart';
@@ -151,7 +152,34 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Connexion')),
+      // The screen the splash hands over to, so it carries the icon's own
+      // gradient — the app opens on the picture the launcher showed rather
+      // than on a white page that could belong to anything.
+      //
+      // Transparent bar and body over it: the gradient runs the whole
+      // height instead of stopping under a band of flat colour.
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Connexion'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.gradientStart, AppColors.gradientEnd],
+          ),
+        ),
+        child: SafeArea(child: _form()),
+      ),
+    );
+  }
+
+  Widget _form() {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
       // Scrollable because the Google button pushed the form tall enough
       // that an open keyboard overflows the remaining height — the column
       // scrolls instead of striping the bottom of the screen. The minHeight
@@ -165,44 +193,60 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Mot de passe'),
-                  onSubmitted: (_) => _submit(),
-                ),
-                const SizedBox(height: 24),
-                if (_error != null) ...[
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 12),
-                ],
-                FilledButton(
-                  onPressed: _submitting ? null : _submit,
-                  child: Text(_submitting ? 'Connexion…' : 'Se connecter'),
-                ),
-                // Hidden where google_sign_in can't drive its own UI (web), since
-                // there the plugin requires a Google-rendered button instead.
-                if (GoogleSignInApi.isSupported) ...[
-                  const SizedBox(height: 24),
-                  const Row(
-                    children: [
-                      Expanded(child: Divider()),
-                      Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('ou')),
-                      Expanded(child: Divider()),
-                    ],
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(labelText: 'Email'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: const InputDecoration(labelText: 'Mot de passe'),
+                          onSubmitted: (_) => _submit(),
+                        ),
+                        const SizedBox(height: 24),
+                        if (_error != null) ...[
+                          Text(
+                            _error!,
+                            style: TextStyle(color: Theme.of(context).colorScheme.error),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        FilledButton(
+                          onPressed: _submitting ? null : _submit,
+                          child: Text(_submitting ? 'Connexion…' : 'Se connecter'),
+                        ),
+                        // Hidden where google_sign_in can't drive its own UI (web), since
+                        // there the plugin requires a Google-rendered button instead.
+                        if (GoogleSignInApi.isSupported) ...[
+                          const SizedBox(height: 24),
+                          const Row(
+                            children: [
+                              Expanded(child: Divider()),
+                              Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12),
+                                child: Text('ou'),
+                              ),
+                              Expanded(child: Divider()),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          OutlinedButton(
+                            onPressed: _submitting ? null : _signInWithGoogle,
+                            child: const Text('Continuer avec Google'),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: _submitting ? null : _signInWithGoogle,
-                    child: const Text('Continuer avec Google'),
-                  ),
-                ],
+                ),
               ],
             ),
           ),

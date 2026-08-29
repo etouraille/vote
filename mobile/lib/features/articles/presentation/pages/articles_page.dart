@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/theme/colors.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import 'text_detail_page.dart';
@@ -338,7 +339,9 @@ class _ArticlesPageState extends State<ArticlesPage> {
   Widget _list() {
     return switch ((_articles, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
-        (null, final error?) => Center(child: Text(error, style: const TextStyle(color: Colors.red))),
+        (null, final error?) => Center(
+            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
         (final articles?, _) when articles.isEmpty => RefreshIndicator(
             onRefresh: _load,
             // A ListView rather than a bare Center: pull-to-refresh needs
@@ -414,7 +417,7 @@ class _ArticleTile extends StatelessWidget {
       // Following is a detail beside the title, not an action here: it is
       // decided on the article's own page, having read it.
       trailing: article.subscribed
-          ? Icon(Icons.check_circle, size: 18, color: Colors.green.shade700)
+          ? const Icon(Icons.check_circle, size: 18, color: AppColors.settled)
           : const Icon(Icons.chevron_right),
     );
   }

@@ -99,7 +99,9 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       appBar: const QueelAppBar(title: 'Mes abonnements'),
       body: switch ((_texts, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
-        (null, final error?) => Center(child: Text(error, style: const TextStyle(color: Colors.red))),
+        (null, final error?) => Center(
+            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
         (final texts?, _) when texts.isEmpty => const Center(
             child: Padding(
               padding: EdgeInsets.all(24),

@@ -102,7 +102,9 @@ class _TextDetailPageState extends State<TextDetailPage> {
       appBar: QueelAppBar(title: _text?.title ?? ''),
       body: switch ((_text, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
-        (null, final error?) => Center(child: Text(error, style: const TextStyle(color: Colors.red))),
+        (null, final error?) => Center(
+            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
         (final text?, _) => SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
