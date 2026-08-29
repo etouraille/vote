@@ -2,19 +2,19 @@
 <div class="flex h-screen flex-col">
   @if (auth.isAuthenticated() && auth.user(); as user) {
     <div
-      class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2"
+      class="flex shrink-0 items-center justify-between gap-2 bg-brand px-4 py-2"
     >
       <div class="flex items-center gap-2">
         @if (avatarUrl(); as url) {
-          <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-slate-200" />
+          <img [src]="url" alt="" class="h-6 w-6 shrink-0 rounded-full border border-white/40" />
         }
-        <span class="text-sm font-medium text-slate-700">{{ user.displayName }}</span>
+        <span class="text-sm font-medium text-white">{{ user.displayName }}</span>
       </div>
       <div class="flex items-center gap-2">
         @if (user.canCreateText) {
           <a
             routerLink="/editor"
-            class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+            class="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-white/90"
           >
             Créer
           </a>
@@ -24,7 +24,7 @@
            badge that does nothing. -->
         <a
           routerLink="/notifications"
-          class="relative rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          class="relative rounded-md border border-white/40 px-3 py-1.5 text-sm text-white hover:bg-white/10"
           [attr.aria-label]="
             notifications.unread() === 0
               ? 'Notifications'
@@ -36,7 +36,7 @@
             <!-- Past 99 the exact figure stops being information and starts
                being a wide badge. -->
             <span
-              class="absolute -top-1.5 -right-1.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 font-medium text-white"
+              class="absolute -top-1.5 -right-1.5 min-w-4 rounded-full bg-removed px-1 text-center text-[10px] leading-4 font-medium text-white ring-1 ring-white/70"
             >
               {{ notifications.unread() > 99 ? '99+' : notifications.unread() }}
             </span>
@@ -45,14 +45,14 @@
         @if (user.root) {
           <a
             routerLink="/backoffice"
-            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            class="rounded-md border border-white/40 px-3 py-1.5 text-sm text-white hover:bg-white/10"
           >
             Backoffice
           </a>
         }
         <button
           (click)="logout()"
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
+          class="rounded-md border border-white/40 px-3 py-1.5 text-sm text-white hover:bg-white/10"
         >
           Se déconnecter
         </button>

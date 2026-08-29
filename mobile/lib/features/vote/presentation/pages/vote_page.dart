@@ -251,8 +251,8 @@ class _VotePageState extends State<VotePage> {
                     // would say the opposite of the highlight.
                     ? _chosenStyle
                     : TextStyle(
-                        backgroundColor: AppColors.removed.withValues(alpha: .15),
-                        color: AppColors.removed,
+                        backgroundColor: AppColors.removedTint,
+                        color: AppColors.removedInk,
                         decoration: TextDecoration.lineThrough,
                       ),
               ),
@@ -296,8 +296,8 @@ class _VotePageState extends State<VotePage> {
                 style: _votedFor(group, fragment.id)
                     ? _chosenStyle
                     : TextStyle(
-                        backgroundColor: AppColors.settled.withValues(alpha: .18),
-                        color: AppColors.settled,
+                        backgroundColor: AppColors.settledTint,
+                        color: AppColors.settledInk,
                       ),
                 recognizer: _canVote ? _recognizerFor(group, fragment) : null,
               ),
@@ -320,7 +320,7 @@ class _VotePageState extends State<VotePage> {
   Widget _body() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error case final error?) {
-      return Center(child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)));
+      return Center(child: Text(error, style: TextStyle(color: AppColors.removedInk)));
     }
     if (_groups.isEmpty) {
       return const Center(
@@ -361,7 +361,7 @@ class _VotePageState extends State<VotePage> {
                 child: Text(
                   '« ${group.original} » : vote enregistré pour '
                   '${votedId == group.seedFragmentId ? 'le texte original' : 'la modification'}.',
-                  style: const TextStyle(color: AppColors.settled),
+                  style: const TextStyle(color: AppColors.settledInk),
                 ),
               ),
             if (group.error case final error?)
@@ -369,7 +369,7 @@ class _VotePageState extends State<VotePage> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   '« ${group.original} » : $error',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  style: TextStyle(color: AppColors.removedInk),
                 ),
               ),
           ],

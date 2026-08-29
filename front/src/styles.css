@@ -2,6 +2,43 @@
 
 @import 'tailwindcss';
 
+/* The palette, shared with the mobile app, which takes it from the app icon
+   (mobile/lib/picture/queel_splash.png): a blue-to-violet gradient carrying
+   a white sheet of paper marked up in green, orange and violet.
+   mobile/lib/app/theme/colors.dart holds the same values — changing one
+   without the other is what makes two clients look like two products.
+
+   Three tokens per intention rather than one, because a colour picked to
+   be seen as a shape is not readable as a word: `base` fills (buttons,
+   dots, badges), `tint` backs a run of text, `ink` is the text itself.
+   Every ink clears 4.5:1 on both white and its own tint. */
+@theme {
+  /* Midway along the icon's gradient. Neither end alone: the blue reads as
+     any other utility app, the violet as heavier than the product is. */
+  --color-brand: #6366f1;
+  --color-brand-ink: #575ad4;
+
+  /* The gradient's ends, for the surfaces that carry it whole — the
+     sign-in and sign-up screens, which is where the mobile shows it too. */
+  --color-gradient-start: #3b82f6;
+  --color-gradient-end: #8b5cf6;
+
+  /* A vote cast, a text followed — something the reader has settled. */
+  --color-settled: #34c759;
+  --color-settled-ink: #207b37;
+  --color-settled-tint: #e1f7e6;
+
+  /* A round in progress, an archived version: live, awaiting a decision. */
+  --color-pending: #f59e0b;
+  --color-pending-ink: #986207;
+  --color-pending-tint: #fef0da;
+
+  /* A wording struck out, an error, an action that cannot be taken back. */
+  --color-removed: #ef4444;
+  --color-removed-ink: #bf3636;
+  --color-removed-tint: #fde3e3;
+}
+
 /* The routed page fills the height app.html's <main> leaves it (see that
    file). Components are inline by default, so without this a page asking
    for height: 100% would resolve it against a box that has collapsed to

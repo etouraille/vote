@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/theme/colors.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../../subscriptions/data/datasources/subscription_api.dart';
@@ -103,7 +104,7 @@ class _TextDetailPageState extends State<TextDetailPage> {
       body: switch ((_text, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
         (null, final error?) => Center(
-            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(error, style: TextStyle(color: AppColors.removedInk)),
           ),
         (final text?, _) => SingleChildScrollView(
             padding: const EdgeInsets.all(16),

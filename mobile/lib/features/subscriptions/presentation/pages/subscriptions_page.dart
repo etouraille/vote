@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/theme/colors.dart';
 import '../../../../app/widgets/queel_app_bar.dart';
 import '../../../../core/network/exceptions.dart';
 import '../../../articles/presentation/pages/text_detail_page.dart';
@@ -100,7 +101,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       body: switch ((_texts, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
         (null, final error?) => Center(
-            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(error, style: TextStyle(color: AppColors.removedInk)),
           ),
         (final texts?, _) when texts.isEmpty => const Center(
             child: Padding(

@@ -27,12 +27,28 @@ class AppColors {
   /// the same green means "settled" on a notification and on a
   /// subscription, and naming it once is what keeps them the same green.
 
+  /// Three tokens per intention rather than one, because a colour picked to
+  /// be seen as a shape is not readable as a word: the base fills (buttons,
+  /// dots, badges), the tint backs a run of text, the ink is the text
+  /// itself. Every ink clears 4.5:1 on both white and its own tint — the
+  /// bare green is 2.2:1 on white, which is a label nobody reads.
+  ///
+  /// front/src/styles.css declares the same twelve values as Tailwind
+  /// tokens. Changing one side without the other is what makes two clients
+  /// look like two products.
+
   /// A vote cast, a text followed — something the reader has settled.
   static const settled = Color(0xFF34C759);
+  static const settledInk = Color(0xFF207B37);
+  static const settledTint = Color(0xFFE1F7E6);
 
   /// A round in progress, a label: something live, awaiting a decision.
   static const pending = Color(0xFFF59E0B);
+  static const pendingInk = Color(0xFF986207);
+  static const pendingTint = Color(0xFFFEF0DA);
 
-  /// A wording struck out, an action that cannot be taken back.
+  /// A wording struck out, an error, an action that cannot be taken back.
   static const removed = Color(0xFFEF4444);
+  static const removedInk = Color(0xFFBF3636);
+  static const removedTint = Color(0xFFFDE3E3);
 }

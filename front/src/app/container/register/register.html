@@ -1,4 +1,9 @@
-<div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+<!-- The gradient of the app icon, which the mobile app shows on its own
+     sign-in screen: the three surfaces a visitor meets before having an
+     account are the ones that have to say which product this is. -->
+<div
+  class="min-h-screen flex items-center justify-center bg-linear-to-br from-gradient-start to-gradient-end px-4"
+>
   <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
     @if (!registered()) {
       <form (ngSubmit)="submit()">
@@ -38,7 +43,7 @@
             class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
           />
         </label>
-        <p class="mt-1 text-xs" [class.text-red-600]="password && !passwordValid" [class.text-slate-400]="!password || passwordValid">
+        <p class="mt-1 text-xs" [class.text-removed-ink]="password && !passwordValid" [class.text-slate-400]="!password || passwordValid">
           Au moins 8 caractères, une majuscule, une minuscule et un chiffre.
         </p>
 
@@ -53,17 +58,17 @@
           />
         </label>
         @if (confirmPassword && !passwordsMatch) {
-          <p class="mt-1 text-xs text-red-600">Les mots de passe ne correspondent pas.</p>
+          <p class="mt-1 text-xs text-removed-ink">Les mots de passe ne correspondent pas.</p>
         }
 
         @if (error()) {
-          <p class="mt-4 text-sm text-red-600">{{ error() }}</p>
+          <p class="mt-4 text-sm text-removed-ink">{{ error() }}</p>
         }
 
         <button
           type="submit"
           [disabled]="!canSubmit"
-          class="mt-6 w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          class="mt-6 w-full rounded-md bg-brand hover:bg-brand-ink px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {{ submitting() ? 'Inscription…' : "S'inscrire" }}
         </button>

@@ -35,7 +35,7 @@
           >
             @for (slot of displayedSlots(); track slot.slotId) {
               <li class="text-sm">
-                <span class="rounded bg-red-100 px-1 text-red-800 line-through">{{
+                <span class="rounded bg-removed-tint px-1 text-removed-ink line-through">{{
                   slot.original
                 }}</span>
                 <span class="mx-1 text-slate-400">&rarr;</span>
@@ -53,7 +53,7 @@
         @if (loadingContent()) {
           <p class="text-sm text-slate-400">Chargement…</p>
         } @else if (contentError(); as error) {
-          <p class="text-sm text-red-600">{{ error }}</p>
+          <p class="text-sm text-removed-ink">{{ error }}</p>
         } @else {
           <!-- whitespace-pre-wrap: content is stored as plain text, so its
                own line breaks are all the structure it has. max-w-3xl keeps
@@ -85,7 +85,7 @@
               &larr;
             </button>
             @if (displayedRoundNumber(); as round) {
-              <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+              <span class="rounded-full bg-pending-tint px-2 py-1 text-xs font-medium text-pending-ink">
                 Tour {{ round }}
               </span>
             }
@@ -99,7 +99,7 @@
             >
               &rarr;
             </button>
-            <span class="ml-2 text-xs text-amber-800">Version archivée — lecture seule</span>
+            <span class="ml-2 text-xs text-pending-ink">Version archivée — lecture seule</span>
           </div>
         } @else {
           <div class="flex flex-wrap items-center gap-1.5">
@@ -117,7 +117,7 @@
               &larr;
             </button>
             @if (displayedRoundNumber(); as round) {
-              <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+              <span class="rounded-full bg-pending-tint px-2 py-1 text-xs font-medium text-pending-ink">
                 Tour {{ round }}
               </span>
             }
@@ -140,7 +140,7 @@
               <a
                 [routerLink]="['/editor']"
                 [queryParams]="{ id: item.textId }"
-                class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+                class="rounded-md bg-brand hover:bg-brand-ink px-3 py-1.5 text-xs font-medium text-white shadow-sm"
               >
                 Éditer
               </a>
@@ -155,7 +155,7 @@
                 <a
                   [routerLink]="['/vote']"
                   [queryParams]="{ id: item.textId }"
-                  class="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+                  class="rounded-md bg-settled-ink px-3 py-1.5 text-xs font-medium text-white shadow-sm"
                 >
                   Voter
                 </a>
@@ -183,7 +183,7 @@
                 type="button"
                 (click)="deleteText(item)"
                 [disabled]="deletingTextId() === item.textId"
-                class="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
+                class="rounded-md border border-removed/50 px-3 py-1.5 text-xs font-medium text-removed-ink disabled:opacity-50"
               >
                 {{ deletingTextId() === item.textId ? 'Suppression…' : 'Supprimer' }}
               </button>
@@ -202,28 +202,28 @@
                 {{ subscribingTextId() === item.textId ? 'Abonnement…' : "S'abonner" }}
               </button>
             } @else if (item.subscribed) {
-              <span class="ml-auto text-xs text-emerald-700">Abonné</span>
+              <span class="ml-auto text-xs text-settled-ink">Abonné</span>
             }
           </div>
         }
         @if (justClosedInto() === item.textId) {
-          <p class="mt-2 text-xs text-emerald-700">
+          <p class="mt-2 text-xs text-settled-ink">
             Tour clos : voici la nouvelle version, les propositions majoritaires y sont intégrées.
           </p>
         }
         @if (scheduledCloseAt()[item.textId]; as date) {
-          <p class="mt-2 text-xs text-amber-700">
+          <p class="mt-2 text-xs text-pending-ink">
             Clôture programmée le {{ date | date: 'dd/MM/yyyy' }}.
           </p>
         }
         @if (subscribeErrors()[item.textId]; as error) {
-          <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+          <p class="mt-2 text-xs text-removed-ink">{{ error }}</p>
         }
         @if (closeErrors()[item.textId]; as error) {
-          <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+          <p class="mt-2 text-xs text-removed-ink">{{ error }}</p>
         }
         @if (deleteErrors()[item.textId]; as error) {
-          <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+          <p class="mt-2 text-xs text-removed-ink">{{ error }}</p>
         }
       </footer>
     } @else {
@@ -262,7 +262,7 @@
       </form>
 
       @if (searchError(); as error) {
-        <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+        <p class="mt-2 text-xs text-removed-ink">{{ error }}</p>
       }
 
       <!-- Labels are reached by typing them, not by browsing a list of
@@ -337,7 +337,7 @@
           class="block w-full border-b border-slate-200 px-3 py-3 text-left hover:bg-white"
           [class.bg-white]="item.textId === selectedId()"
           [class.border-l-2]="item.textId === selectedId()"
-          [class.border-l-slate-900]="item.textId === selectedId()"
+          [class.border-l-brand]="item.textId === selectedId()"
         >
           <span class="flex items-center gap-2">
             <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{{
@@ -346,7 +346,7 @@
             @if (item.subscribed) {
               <!-- A dot, not the word: the row is narrow and this is a
                    secondary detail next to the title. -->
-              <span class="shrink-0 text-emerald-600" title="Abonné" aria-label="Abonné">●</span>
+              <span class="shrink-0 text-settled" title="Abonné" aria-label="Abonné">●</span>
             }
           </span>
 
@@ -364,7 +364,7 @@
 
           @if (item.roundNumber) {
             <span
-              class="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+              class="mt-1 inline-block rounded-full bg-pending-tint px-2 py-0.5 text-[10px] font-medium text-pending-ink"
             >
               Round {{ item.roundNumber }}
             </span>
@@ -411,7 +411,7 @@
       <button
         type="button"
         (click)="confirmCloseNow(popupTarget)"
-        class="mt-4 w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+        class="mt-4 w-full rounded-md bg-brand hover:bg-brand-ink px-3 py-2 text-sm font-medium text-white"
       >
         Clore maintenant
       </button>

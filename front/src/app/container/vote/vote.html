@@ -14,7 +14,7 @@
   @if (loading()) {
     <p class="mt-6 text-sm text-slate-400">Chargement…</p>
   } @else if (loadError(); as error) {
-    <p class="mt-6 text-sm text-red-600">{{ error }}</p>
+    <p class="mt-6 text-sm text-removed-ink">{{ error }}</p>
   } @else if (slotGroups().length === 0) {
     <!-- Every text now carries an open round from its creation onwards, so
          an empty list means "nobody has proposed anything yet", not "no
@@ -42,8 +42,8 @@
                  would otherwise contradict the highlight. -->
             <span
               class="rounded px-1"
-              [class.bg-red-100]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
-              [class.text-red-800]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.bg-removed-tint]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
+              [class.text-removed-ink]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
               [class.line-through]="!hasVotedFor(seg.group, seg.group.seedFragmentId)"
               [class.bg-yellow-200]="hasVotedFor(seg.group, seg.group.seedFragmentId)"
               [class.text-yellow-900]="hasVotedFor(seg.group, seg.group.seedFragmentId)"
@@ -74,8 +74,8 @@
                       the same across the app. -->
                 <span
                   class="cursor-pointer rounded px-1"
-                  [class.bg-green-100]="!hasVotedFor(seg.group, fv.fragment.id)"
-                  [class.text-green-800]="!hasVotedFor(seg.group, fv.fragment.id)"
+                  [class.bg-settled-tint]="!hasVotedFor(seg.group, fv.fragment.id)"
+                  [class.text-settled-ink]="!hasVotedFor(seg.group, fv.fragment.id)"
                   [class.bg-yellow-200]="hasVotedFor(seg.group, fv.fragment.id)"
                   [class.text-yellow-900]="hasVotedFor(seg.group, fv.fragment.id)"
                   [class.font-medium]="hasVotedFor(seg.group, fv.fragment.id)"
@@ -94,7 +94,7 @@
                       type="button"
                       (click)="vote(seg.group, seg.group.seedFragmentId); hidePopupNow(fv)"
                       [disabled]="seg.group.voting() || !seg.group.seedFragmentId"
-                      class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      class="rounded-md bg-removed px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                     >
                       Voter pour le texte original
                     </button>
@@ -102,7 +102,7 @@
                       type="button"
                       (click)="vote(seg.group, fv.fragment.id); hidePopupNow(fv)"
                       [disabled]="seg.group.voting()"
-                      class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      class="rounded-md bg-settled-ink px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                     >
                       Voter pour la modification
                     </button>
@@ -116,13 +116,13 @@
 
       @for (group of slotGroups(); track group.slot.id) {
         @if (group.votedFragmentId(); as votedId) {
-          <p class="mt-4 text-xs text-emerald-700">
+          <p class="mt-4 text-xs text-settled-ink">
             « {{ group.original }} » : vote enregistré pour
             {{ votedId === group.seedFragmentId ? 'le texte original' : 'la modification' }}.
           </p>
         }
         @if (group.error(); as error) {
-          <p class="mt-2 text-xs text-red-600">« {{ group.original }} » : {{ error }}</p>
+          <p class="mt-2 text-xs text-removed-ink">« {{ group.original }} » : {{ error }}</p>
         }
       }
     </section>

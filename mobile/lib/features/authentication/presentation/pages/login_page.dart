@@ -215,7 +215,7 @@ class _LoginPageState extends State<LoginPage> {
                         if (_error != null) ...[
                           Text(
                             _error!,
-                            style: TextStyle(color: Theme.of(context).colorScheme.error),
+                            style: TextStyle(color: AppColors.removedInk),
                           ),
                           const SizedBox(height: 12),
                         ],

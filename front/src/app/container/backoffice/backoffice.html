@@ -10,7 +10,7 @@
       <p class="text-sm text-slate-400">Chargement…</p>
     } @else {
       @if (error()) {
-        <p class="mb-4 text-sm text-red-600">{{ error() }}</p>
+        <p class="mb-4 text-sm text-removed-ink">{{ error() }}</p>
       }
 
       @if (users().length === 0) {
@@ -76,13 +76,13 @@
                       type="button"
                       (click)="delete(user)"
                       [disabled]="deletingId() === user.id"
-                      class="rounded-md border border-red-300 px-3 py-1 text-xs text-red-700 disabled:opacity-50"
+                      class="rounded-md border border-removed/50 px-3 py-1 text-xs text-removed-ink disabled:opacity-50"
                     >
                       {{ deletingId() === user.id ? 'Suppression…' : 'Supprimer' }}
                     </button>
                   </div>
                   @if (savedId() === user.id) {
-                    <span class="text-xs text-emerald-600">Enregistré</span>
+                    <span class="text-xs text-settled-ink">Enregistré</span>
                   }
                 </td>
               </tr>

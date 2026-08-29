@@ -6,7 +6,23 @@ class AppTheme {
   AppTheme._();
 
   static ThemeData get light {
-    final scheme = ColorScheme.fromSeed(seedColor: AppColors.seed);
+    // fromSeed for the tones nobody names — surfaces, containers, outlines.
+    // The primary is pinned to the seed itself rather than to the tone
+    // Material derives from it: it is the front's --color-brand to the
+    // byte, and a derived tone would be a near miss, which reads worse
+    // than an honest difference.
+    final scheme = ColorScheme.fromSeed(
+      seedColor: AppColors.seed,
+    ).copyWith(
+      primary: AppColors.seed,
+      onPrimary: Colors.white,
+      // The base red, not the ink: error here fills the unread badge, and
+      // the front fills its own badge with the same bg-removed. Error text
+      // takes AppColors.removedInk at the call site, as text-removed-ink
+      // does there.
+      error: AppColors.removed,
+      onError: Colors.white,
+    );
 
     return ThemeData(
       colorScheme: scheme,

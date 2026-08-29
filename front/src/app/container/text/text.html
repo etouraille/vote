@@ -6,7 +6,7 @@
   @if (loading()) {
     <p class="mt-6 text-sm text-slate-400">Chargement…</p>
   } @else if (loadError(); as error) {
-    <p class="mt-6 text-sm text-red-600">{{ error }}</p>
+    <p class="mt-6 text-sm text-removed-ink">{{ error }}</p>
   } @else if (text(); as text) {
     <h1 class="text-xl font-semibold text-slate-900">{{ text.title }}</h1>
     <!-- Under the title, where a subtitle would be: what a text is about is
@@ -35,7 +35,7 @@
           type="button"
           (click)="subscribe()"
           [disabled]="subscribing()"
-          class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm disabled:opacity-50"
+          class="rounded-md bg-brand hover:bg-brand-ink px-3 py-1.5 text-xs font-medium text-white shadow-sm disabled:opacity-50"
         >
           {{ subscribing() ? 'Abonnement…' : "S'abonner" }}
         </button>
@@ -46,11 +46,11 @@
     } @else if (subscribed()) {
       <!-- A marker, not a button: there is no unsubscribe route, so
            offering one would be a control that can't do anything. -->
-      <p class="mt-4 text-xs text-emerald-700">Vous suivez ce texte.</p>
+      <p class="mt-4 text-xs text-settled-ink">Vous suivez ce texte.</p>
     }
 
     @if (subscribeError(); as error) {
-      <p class="mt-2 text-xs text-red-600">{{ error }}</p>
+      <p class="mt-2 text-xs text-removed-ink">{{ error }}</p>
     }
   }
 </div>

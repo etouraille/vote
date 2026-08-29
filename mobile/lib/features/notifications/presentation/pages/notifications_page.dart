@@ -147,7 +147,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       body: switch ((notifications, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
         (null, final error?) => Center(
-            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(error, style: TextStyle(color: AppColors.removedInk)),
           ),
         (final items?, _) when items.isEmpty => RefreshIndicator(
             onRefresh: _load,
@@ -204,7 +204,7 @@ class _NotificationTile extends StatelessWidget {
     // Voted wins over read because it is the later one — and the only one
     // that says the matter is closed.
     final (label, icon, colour) = switch ((notification.voted, unread)) {
-      (true, _) => ('Voté', Icons.how_to_vote, AppColors.settled),
+      (true, _) => ('Voté', Icons.how_to_vote, AppColors.settledInk),
       (_, true) => ('Non lu', Icons.circle, theme.colorScheme.primary),
       _ => ('Lu', Icons.circle_outlined, theme.disabledColor),
     };

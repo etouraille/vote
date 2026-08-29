@@ -16,7 +16,7 @@
   </div>
 
   @if (loadError(); as error) {
-    <p class="text-sm text-red-600">{{ error }}</p>
+    <p class="text-sm text-removed-ink">{{ error }}</p>
   } @else if (items() === null) {
     <p class="text-sm text-slate-400">Chargement…</p>
   } @else if (items(); as list) {
@@ -34,7 +34,7 @@
                  reader. -->
             <span
               class="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-              [class.bg-slate-900]="!item.read"
+              [class.bg-brand]="!item.read"
               [class.bg-slate-200]="item.read"
               [attr.aria-label]="item.read ? 'Lu' : 'Non lu'"
             ></span>

@@ -32,7 +32,7 @@
     @if (loading()) {
       <p class="mt-6 text-sm text-slate-400">Chargement du texte…</p>
     } @else if (loadError(); as error) {
-      <p class="mt-6 text-sm text-red-600">{{ error }}</p>
+      <p class="mt-6 text-sm text-removed-ink">{{ error }}</p>
     } @else {
       <div class="relative mt-6 flex flex-1 gap-4 overflow-hidden">
         <div class="relative flex-1 overflow-hidden">
@@ -74,7 +74,7 @@
                   type="button"
                   (click)="submitProposal()"
                   [disabled]="proposing() || !savedTextId()"
-                  class="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  class="rounded-md bg-settled-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
                 >
                   {{ proposing() ? 'Envoi…' : 'Valider' }}
                 </button>
@@ -86,12 +86,12 @@
                   Annuler
                 </button>
                 @if (!savedTextId()) {
-                  <p class="text-xs text-red-600">
+                  <p class="text-xs text-removed-ink">
                     Sauvegardez le texte avant de proposer une modification.
                   </p>
                 }
                 @if (proposalError(); as error) {
-                  <p class="text-xs text-red-600">{{ error }}</p>
+                  <p class="text-xs text-removed-ink">{{ error }}</p>
                 }
               </div>
             </div>
@@ -109,26 +109,26 @@
                 type="button"
                 (click)="save()"
                 [disabled]="saving() || !title().trim()"
-                class="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                class="rounded-md bg-settled-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {{ saving() ? 'Sauvegarde…' : 'Sauvegarder le texte' }}
               </button>
             }
             @if (saveError(); as error) {
-              <p class="text-xs text-red-600">{{ error }}</p>
+              <p class="text-xs text-removed-ink">{{ error }}</p>
             }
 
             @if (canAmendText()) {
               <button
                 type="button"
                 (click)="highlight()"
-                class="mt-3 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                class="mt-3 rounded-md bg-brand hover:bg-brand-ink px-3 py-2 text-sm font-medium text-white"
               >
                 Sélectionner du texte à amender
               </button>
             }
             @if (selectionError(); as error) {
-              <p class="text-xs text-red-600">{{ error }}</p>
+              <p class="text-xs text-removed-ink">{{ error }}</p>
             }
             @if (lastSelection(); as selection) {
               <div

@@ -340,7 +340,7 @@ class _ArticlesPageState extends State<ArticlesPage> {
     return switch ((_articles, _error)) {
         (null, null) => const Center(child: CircularProgressIndicator()),
         (null, final error?) => Center(
-            child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(error, style: TextStyle(color: AppColors.removedInk)),
           ),
         (final articles?, _) when articles.isEmpty => RefreshIndicator(
             onRefresh: _load,
