@@ -45,6 +45,16 @@ class _ArticlesPageState extends State<ArticlesPage> {
   final _typed = TextEditingController();
   final _typedFocus = FocusNode();
 
+  /// The line as it stood when the options were last built.
+  ///
+  /// RawAutocomplete replaces the whole field with the option chosen and
+  /// only then calls onSelected, so by the time _completeWith runs the
+  /// labels already on the line are gone from the controller. Completing a
+  /// second label used to wipe the first, which made crossing labels look
+  /// impossible on this screen. Kept from optionsBuilder, which is handed
+  /// the live value on every keystroke.
+  String _line = '';
+
   bool _loadingMore = false;
   bool _hasMore = true;
 
@@ -129,6 +139,12 @@ class _ArticlesPageState extends State<ArticlesPage> {
     final already = words.take(words.length - (current.isEmpty ? 0 : 1)).toSet();
     final typed = _fold(current);
 
+    // Nothing while no word is being typed. Tapping the field would
+    // otherwise drop the whole label list over the articles the filter
+    // exists to reveal — the browsing screen this replaced, back by
+    // another route. The front holds the same rule.
+    if (typed.isEmpty) return const [];
+
     final matches = <({String tag, int rank})>[];
     for (var i = 0; i < _tags.length; i++) {
       final tag = _tags[i].tag;
@@ -159,11 +175,12 @@ class _ArticlesPageState extends State<ArticlesPage> {
   /// Replaces the word being typed with the label chosen, and leaves a
   /// space so the next one can follow without touching the keyboard.
   void _completeWith(String tag) {
-    final words = _words(_typed.text);
-    if (!_endsOnSeparator(_typed.text) && words.isNotEmpty) words.removeLast();
+    final words = _words(_line);
+    if (!_endsOnSeparator(_line) && words.isNotEmpty) words.removeLast();
 
     _typed.text = '${[...words, tag].join(' ')} ';
     _typed.selection = TextSelection.collapsed(offset: _typed.text.length);
+    _line = _typed.text;
     _applyFilter();
   }
 
@@ -258,7 +275,10 @@ class _ArticlesPageState extends State<ArticlesPage> {
             RawAutocomplete<String>(
               textEditingController: _typed,
               focusNode: _typedFocus,
-              optionsBuilder: (value) => _suggestions(value.text),
+              optionsBuilder: (value) {
+                _line = value.text;
+                return _suggestions(value.text);
+              },
               onSelected: _completeWith,
               fieldViewBuilder: (context, controller, focusNode, onSubmitted) {
                 return TextField(
@@ -269,7 +289,10 @@ class _ArticlesPageState extends State<ArticlesPage> {
                   decoration: const InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
-                    hintText: 'loi #vote — dièse facultatif',
+                    // No sample labels: the two invented here read as the
+                    // filter's own suggestions on a screen whose whole job
+                    // is to suggest real ones.
+                    hintText: 'Dièse facultatif',
                   ),
                 );
               },
@@ -353,7 +376,10 @@ class _ArticlesPageState extends State<ArticlesPage> {
                   child: Text(
                     _activeTags().isEmpty
                         ? 'Aucun article pour le moment.'
-                        : 'Aucun article ne porte à la fois ${_activeTags().map((tag) => '#$tag').join(', ')}.',
+                        // The line as it was typed, not a split of it: the
+                        // api owns that rule, and printing our own guess at
+                        // it would claim labels the server never read.
+                        : 'Aucun article ne porte à la fois « ${_typed.text.trim()} ».',
                     textAlign: TextAlign.center,
                   ),
                 ),
