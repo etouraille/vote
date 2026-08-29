@@ -11,6 +11,20 @@ class AuthApi {
     return Session.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Creates an account and asks the api to send its confirmation email.
+  ///
+  /// Nothing comes back to hold on to: there is no session yet, and there
+  /// cannot be one until the emailed link is followed. [pseudo] is
+  /// optional — the api takes an empty one and the account simply shows
+  /// its email until one is set.
+  static Future<void> register(String email, String pseudo, String password) async {
+    await ApiClient.post(Endpoints.register, {
+      'email': email,
+      'pseudo': pseudo,
+      'password': password,
+    });
+  }
+
   /// Exchanges a Google ID token (see GoogleSignInApi) for a session.
   ///
   /// [pseudo] is only for the first sign-in of a Google account the

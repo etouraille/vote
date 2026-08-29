@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/articles/presentation/pages/articles_page.dart';
 import '../features/authentication/presentation/pages/login_page.dart';
+import '../features/authentication/presentation/pages/register_page.dart';
 import '../features/notifications/presentation/pages/notifications_page.dart';
 import '../features/subscriptions/presentation/pages/subscriptions_page.dart';
 
@@ -16,6 +17,7 @@ class AppRouter {
   static final navigatorKey = GlobalKey<NavigatorState>();
 
   static const String login = '/login';
+  static const String register = '/register';
   static const String articles = '/articles';
   static const String subscriptions = '/subscriptions';
   static const String notifications = '/notifications';
@@ -28,6 +30,8 @@ class AppRouter {
     switch (settings.name) {
       case login:
         return MaterialPageRoute(settings: settings, builder: (_) => const LoginPage());
+      case register:
+        return MaterialPageRoute(settings: settings, builder: (_) => const RegisterPage());
       case articles:
         return MaterialPageRoute(settings: settings, builder: (_) => const ArticlesPage());
       case subscriptions:

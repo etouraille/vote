@@ -5,6 +5,10 @@ class Endpoints {
 
   static const login = '/api/auth/login';
 
+  /// Creating an account. The api answers 201 and sends a confirmation
+  /// email: signing in only works once its link has been followed.
+  static const register = '/api/auth/register';
+
   /// "Sign in with Google" — takes a Google ID token instead of a password.
   /// Only served when api's own GOOGLE_CLIENT_ID is set (see main.go), so a
   /// backend without it configured answers 404 here.

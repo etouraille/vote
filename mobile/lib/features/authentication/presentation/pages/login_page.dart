@@ -243,6 +243,18 @@ class _LoginPageState extends State<LoginPage> {
                             child: const Text('Continuer avec Google'),
                           ),
                         ],
+                        const SizedBox(height: 8),
+                        // The way in for someone who has no account yet.
+                        // Pushed rather than replacing this screen: coming
+                        // back is the normal end of registering, since the
+                        // account still has to be confirmed by email
+                        // before it can sign in.
+                        TextButton(
+                          onPressed: _submitting
+                              ? null
+                              : () => Navigator.of(context).pushNamed(AppRouter.register),
+                          child: const Text("Pas de compte ? S'inscrire"),
+                        ),
                       ],
                     ),
                   ),
