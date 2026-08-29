@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -47,6 +48,43 @@ func TestNotifyIsSafeWithoutADispatcher(t *testing.T) {
 	// Reaching here without a panic is the assertion; the store and repo
 	// are nil, so any lookup would have crashed.
 	_ = notify.Notification{}
+}
+
+// TestForgetNotificationsSurvivesAnUnreachableInbox pins the promise the
+// unsubscribe route makes: leaving a text has already succeeded in queel by
+// the time the inbox is cleared, so nothing about the clearing may fail the
+// request — not a database that answers nothing, and not a text whose
+// version chain cannot be read.
+//
+// The store here holds a handle on an address nothing listens on, so every
+// statement fails; the test passes by returning at all.
+func TestForgetNotificationsSurvivesAnUnreachableInbox(t *testing.T) {
+	engine, err := queel.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	repo := queel.NewRepository(engine)
+
+	text, err := repo.CreateText("Constitution", "Nous le peuple.", "creator", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("postgres", "postgres://nobody@127.0.0.1:1/none?sslmode=disable&connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// A nil store is the deployment with no database at all; the
+	// unreachable one is the database that is simply down.
+	forgetNotifications(context.Background(), repo, nil, "lecteur", text.ID)
+	forgetNotifications(context.Background(), repo, &Store{db: db}, "lecteur", text.ID)
+
+	// And a text that no longer exists: subscriptions outlive the text they
+	// point at, so the chain lookup can legitimately fail.
+	forgetNotifications(context.Background(), repo, nil, "lecteur", "texte-disparu")
 }
 
 // TestKeepLatestRoundDropsSupersededTexts pins the rule the inbox filters

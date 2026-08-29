@@ -7,6 +7,7 @@ import 'app/app.dart';
 import 'app/config/env.dart';
 import 'core/storage/secure_storage.dart';
 import 'features/notifications/notification_service.dart';
+import 'features/notifications/unread_notifications.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
 import 'features/articles/presentation/pages/articles_page.dart';
 
@@ -35,6 +36,9 @@ Future<void> main() async {
   // a notification arriving immediately already has its channel. A no-op
   // when push isn't configured, and it never throws — see the service.
   await NotificationService.initialize();
+  // Leaving a text clears its notifications server-side, so the unread
+  // badge has to be asked again the moment that happens.
+  UnreadNotifications.watchSubscriptions();
   // Only with a session in hand: the api takes the device's owner from the
   // bearer token, so registering while signed out would be rejected. The
   // login page does the same once a session is opened.

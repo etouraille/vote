@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
+import '../subscriptions/subscription_changes.dart';
 import 'data/datasources/notification_api.dart';
 
 /// The unread count, shared by whoever displays it.
@@ -27,6 +30,27 @@ class UnreadNotifications {
   static const _staleAfter = Duration(seconds: 30);
 
   static DateTime? _lastRefresh;
+
+  static bool _watchingSubscriptions = false;
+
+  /// Keeps the count honest when a text is left: the api drops that text's
+  /// entries from the inbox, so the number in hand counts rows that no
+  /// longer exist — and _staleAfter would hold that wrong number for half a
+  /// minute, which is exactly long enough to be seen.
+  ///
+  /// Armed once, from main(), and never disarmed: the badge outlives every
+  /// screen. Not from NotificationService.initialize, which returns early
+  /// where push isn't configured — the inbox works there all the same.
+  static void watchSubscriptions() {
+    if (_watchingSubscriptions) return;
+    _watchingSubscriptions = true;
+
+    SubscriptionChanges.last.addListener(() {
+      if (SubscriptionChanges.last.value?.following == false) {
+        unawaited(refresh(force: true));
+      }
+    });
+  }
 
   /// Re-reads the count from the api.
   ///

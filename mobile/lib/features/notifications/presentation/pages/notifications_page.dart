@@ -8,6 +8,7 @@ import '../../../vote/presentation/pages/vote_page.dart';
 import '../../data/datasources/notification_api.dart';
 import '../../data/models/app_notification.dart';
 import '../../notification_types.dart';
+import '../../../subscriptions/subscription_changes.dart';
 import '../../unread_notifications.dart';
 
 /// What push already delivered, readable after the fact.
@@ -30,7 +31,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
+    SubscriptionChanges.last.addListener(_onSubscriptionChange);
     _load();
+  }
+
+  @override
+  void dispose() {
+    SubscriptionChanges.last.removeListener(_onSubscriptionChange);
+    super.dispose();
+  }
+
+  /// Leaving a text drops its entries from the inbox server-side, so this
+  /// list is stale the moment it happens on a screen above — "Mes
+  /// abonnements", reachable from the menu on this very page. Read again
+  /// rather than filtered here: which rows went is the server's answer,
+  /// and the badge rides on the same response.
+  void _onSubscriptionChange() {
+    if (SubscriptionChanges.last.value?.following == false) _load();
   }
 
   Future<void> _load() async {

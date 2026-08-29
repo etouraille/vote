@@ -71,6 +71,30 @@ func (s *Store) SaveNotifications(ctx context.Context, userIDs []string, kind, t
 	return err
 }
 
+// DeleteNotificationsForTexts drops a user's inbox entries about the given
+// texts. Returns how many rows went, which is what the caller logs.
+//
+// Called when someone stops following a text: the fan-out already skips
+// them from that moment on (see textNotifier.recipients), but the entries
+// written while they were still following would otherwise sit in their
+// inbox for good, about a text they have deliberately left.
+//
+// Scoped to one user: leaving a text is a personal act, and the same
+// entries belong to every other follower too.
+func (s *Store) DeleteNotificationsForTexts(ctx context.Context, userID string, textIDs []string) (int64, error) {
+	if len(textIDs) == 0 {
+		return 0, nil
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+		DELETE FROM notifications
+		WHERE user_id = $1 AND text_id = ANY($2)`, userID, pq.Array(textIDs))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // ListNotifications returns a user's inbox, newest first.
 // types narrows the listing to certain event kinds; empty means every
 // kind. A client that shows only some of them has to be able to say so

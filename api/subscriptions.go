@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/etouraille/queel"
@@ -54,7 +56,13 @@ func subscribeHandler(repo *queel.Repository) http.HandlerFunc {
 // was revoked must still be able to leave the texts they had joined —
 // otherwise a withdrawn permission would trap them in their subscriptions
 // rather than stop them making new ones.
-func unsubscribeHandler(repo *queel.Repository) http.HandlerFunc {
+//
+// Leaving also empties the inbox of what the text had already sent. The
+// fan-out stops at once on its own — recipients are resolved per event —
+// but the entries written while the reader was still following would
+// otherwise stay in their list for good, about a text they have
+// deliberately left.
+func unsubscribeHandler(repo *queel.Repository, store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := claimsFromContext(r)
 		if !ok {
@@ -62,11 +70,50 @@ func unsubscribeHandler(repo *queel.Repository) http.HandlerFunc {
 			return
 		}
 
-		if err := repo.Unsubscribe(claims.Subject, r.PathValue("id")); err != nil {
+		textID := r.PathValue("id")
+		if err := repo.Unsubscribe(claims.Subject, textID); err != nil {
 			writeError(w, http.StatusInternalServerError, "erreur serveur")
 			return
 		}
+
+		forgetNotifications(r.Context(), repo, store, claims.Subject, textID)
 		writeJSON(w, http.StatusOK, subscribeResponse{Subscribed: false})
+	}
+}
+
+// forgetNotifications clears the inbox of everything one text has sent a
+// reader, across every version of it.
+//
+// The whole chain and not just the id asked for: a text is forked on each
+// closed round, so its earlier notifications carry the ids of earlier
+// versions. Leaving "the text" has to mean the text, not the version that
+// happens to be current — even though the listing already hides the older
+// ones (see keepLatestRound), because rows nobody can ever see again are
+// not rows worth keeping.
+//
+// Never fails the request. Leaving is what was asked for and it has
+// already succeeded; an inbox that keeps a few entries is a far smaller
+// wrong than a 500 that suggests the reader is still subscribed.
+func forgetNotifications(ctx context.Context, repo *queel.Repository, store *Store, userID, textID string) {
+	if store == nil {
+		return
+	}
+
+	textIDs := []string{textID}
+	chain, err := repo.TextChain(textID)
+	if err != nil {
+		// The text itself may be gone — subscriptions outlive it. The
+		// current id alone is still worth clearing.
+		log.Printf("unsubscribe: reading the versions of text %s: %v", textID, err)
+	} else {
+		textIDs = textIDs[:0]
+		for _, version := range chain {
+			textIDs = append(textIDs, version.ID)
+		}
+	}
+
+	if _, err := store.DeleteNotificationsForTexts(ctx, userID, textIDs); err != nil {
+		log.Printf("unsubscribe: clearing %s's notifications about text %s: %v", userID, textID, err)
 	}
 }
 
