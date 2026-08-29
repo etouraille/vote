@@ -43,6 +43,12 @@ type storedNotification struct {
 	CreatedAt string `json:"createdAt"`
 	Read      bool   `json:"read"`
 
+	// Voted says the reader has already taken part in the round this
+	// notification is about — a third state beside read and unread, since
+	// having opened something and having answered it are not the same
+	// thing, and only the second ends the matter.
+	Voted bool `json:"voted"`
+
 	// Actor is who caused the event, absent when nobody did — a scheduled
 	// close, or a row written before the column existed. The body names
 	// them too; this is for showing the name as its own element rather
@@ -167,6 +173,52 @@ type notificationsResponse struct {
 // listNotificationsHandler returns the caller's inbox plus the unread
 // count, in one call — a client showing a list almost always shows a badge
 // beside it, and splitting them would guarantee the two disagree.
+// votedOn reports, for each text, whether the reader has already voted in
+// the round the notification is about.
+//
+// For an edit proposed on a text, that is the text itself. For a round
+// that has closed, it is the version *before* the fork: the votes that
+// settled it were cast there, and the fork carries none yet — asked about
+// the fork alone, someone who voted in that very round would be told they
+// had not.
+//
+// One lookup per distinct text, like the filter above: an inbox is usually
+// several events about a handful of texts.
+func votedOn(repo *queel.Repository, userID string, textIDs []string) (map[string]bool, error) {
+	voted := make(map[string]bool, len(textIDs))
+	for _, textID := range textIDs {
+		if textID == "" {
+			continue
+		}
+		if _, done := voted[textID]; done {
+			continue
+		}
+
+		votes, err := repo.UserVotes(textID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if len(votes) > 0 {
+			voted[textID] = true
+			continue
+		}
+
+		// Nothing on this version: the round it came from may be the one
+		// that produced it.
+		text, err := repo.Text(textID)
+		if err != nil || text.PreviousTextID == "" {
+			voted[textID] = false
+			continue
+		}
+		previous, err := repo.UserVotes(text.PreviousTextID, userID)
+		if err != nil {
+			return nil, err
+		}
+		voted[textID] = len(previous) > 0
+	}
+	return voted, nil
+}
+
 // keepLatestRound drops the notifications that concern a version of a text
 // a later round has already superseded.
 //
@@ -266,6 +318,22 @@ func listNotificationsHandler(store *Store, repo *queel.Repository) http.Handler
 				break
 			}
 			notifications = append(notifications, notification)
+		}
+
+		// After the filter, so nothing is looked up for a notification the
+		// page then drops.
+		shown := make([]string, 0, len(notifications))
+		for _, notification := range notifications {
+			shown = append(shown, notification.TextID)
+		}
+		voted, err := votedOn(repo, claims.Subject, shown)
+		if err != nil {
+			log.Printf("resolving what %s has voted on: %v", claims.Subject, err)
+			writeError(w, http.StatusInternalServerError, "erreur serveur")
+			return
+		}
+		for i := range notifications {
+			notifications[i].Voted = voted[notifications[i].TextID]
 		}
 
 		// Counted after the same filter, or the badge would promise

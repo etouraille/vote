@@ -101,7 +101,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
-  void _open(AppNotification notification) {
+  Future<void> _open(AppNotification notification) async {
     // Reading it is what marks it read — no separate gesture, and no way
     // to end up with an inbox full of entries already acted on.
     _setRead(notification, true);
@@ -109,7 +109,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (!notification.opensText) return;
     final textId = notification.textId!;
 
-    Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(MaterialPageRoute(
       // An edit awaiting votes opens straight onto the round; anything
       // else opens the text, since there may be nothing to vote on. Same
       // rule a tapped push notification follows (see NotificationService),
@@ -118,6 +118,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ? VotePage(textId: textId)
           : TextDetailPage(textId: textId),
     ));
+
+    // Voting happened over there, and whether it did is decided by the
+    // api — so the list is asked again rather than guessed at here.
+    if (mounted) await _load();
   }
 
   @override
@@ -193,15 +197,24 @@ class _NotificationTile extends StatelessWidget {
     final theme = Theme.of(context);
     final unread = !notification.read;
 
+    // Three states, in the order they happen: not opened, opened, answered.
+    // Voted wins over read because it is the later one — and the only one
+    // that says the matter is closed.
+    final (label, icon, colour) = switch ((notification.voted, unread)) {
+      (true, _) => ('Voté', Icons.how_to_vote, Colors.green.shade700),
+      (_, true) => ('Non lu', Icons.circle, theme.colorScheme.primary),
+      _ => ('Lu', Icons.circle_outlined, theme.disabledColor),
+    };
+
     return ListTile(
       onTap: onTap,
       onLongPress: onToggleRead,
-      // Unread is carried by a dot and by weight, not by colour alone —
-      // the distinction has to survive a colour-blind reader.
-      leading: Icon(
-        unread ? Icons.circle : Icons.circle_outlined,
-        size: 12,
-        color: unread ? theme.colorScheme.primary : theme.disabledColor,
+      // Named as well as drawn: three states told apart by a shape alone
+      // would leave the reader guessing which is which, and the
+      // distinction has to survive a colour-blind reader too.
+      leading: Tooltip(
+        message: label,
+        child: Icon(icon, size: 14, color: colour),
       ),
       title: Text(
         notification.title,
@@ -213,9 +226,11 @@ class _NotificationTile extends StatelessWidget {
           Text(notification.body),
           const SizedBox(height: 4),
           Text(
-            notification.actor == null
-                ? _relativeTime(notification.createdAt)
-                : '${notification.actor} · ${_relativeTime(notification.createdAt)}',
+            [
+              label,
+              if (notification.actor != null) notification.actor!,
+              _relativeTime(notification.createdAt),
+            ].join(' · '),
             style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7)),
           ),
         ],

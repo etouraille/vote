@@ -13,6 +13,7 @@ class AppNotification {
     required this.createdAt,
     required this.read,
     required this.actor,
+    required this.voted,
   });
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
@@ -31,6 +32,7 @@ class AppNotification {
       // Absent when nobody caused it — a scheduled close — or on a row
       // written before the api recorded it.
       actor: json['actor'] as String?,
+      voted: json['voted'] as bool? ?? false,
     );
   }
 
@@ -46,6 +48,11 @@ class AppNotification {
   final String title;
   final String body;
   final DateTime createdAt;
+
+  /// Whether the reader has already taken part in the round this is
+  /// about. Distinct from [read]: having opened something and having
+  /// answered it are not the same, and only the second ends the matter.
+  final bool voted;
 
   /// Who caused it, when somebody did. The body names them too; this is
   /// for showing the name on its own rather than reading it back out of a
@@ -70,6 +77,7 @@ class AppNotification {
       createdAt: createdAt,
       read: read ?? this.read,
       actor: actor,
+      voted: voted,
     );
   }
 }
